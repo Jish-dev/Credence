@@ -1,0 +1,1 @@
+import {z} from "zod"; export const bookingValidator=z.object({quoteId:z.string(),scheduledAt:z.string().optional()});

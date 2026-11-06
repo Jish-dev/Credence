@@ -1,0 +1,1 @@
+import {z} from "zod"; export const serviceValidator=z.object({name:z.string().min(2),description:z.string().optional(),category:z.string().optional(),price:z.number().min(0),priceType:z.enum(["fixed","hourly","quote"]).optional(),durationMinutes:z.number().min(1).optional()});

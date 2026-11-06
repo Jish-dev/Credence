@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.4",
+    "axios": "^1.21.0",
+    "lucide-react": "^1.69.0",
+    "react-hot-toast": "^2.6.1",
+    "react-router-dom": "^7.18.5",
+    "recharts": "^3.10.1",
+    "tailwindcss": "^4.3.4"
+  }
+}
