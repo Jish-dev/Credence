@@ -237,8 +237,8 @@ export default function Navbar({ user }: NavbarProps) {
   // ========================================
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 w-full border-b border-slate-200 bg-white shadow-sm">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+    <header className="fixed inset-x-0 top-0 z-50 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+      <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-5 sm:px-6 lg:px-8">
 
         {/* Logo */}
         <a
@@ -260,7 +260,7 @@ export default function Navbar({ user }: NavbarProps) {
         {/* Desktop navigation */}
         <nav
           aria-label="Main navigation"
-          className="hidden items-center gap-7 text-sm font-semibold tracking-wide text-slate-700 md:flex lg:gap-9"
+          className="hidden items-center gap-7 text-[13px] font-medium tracking-normal text-slate-700 md:flex lg:gap-9"
         >
           {navLinks.map((link) => (
             <a
@@ -287,7 +287,7 @@ export default function Navbar({ user }: NavbarProps) {
         </nav>
 
         {/* Desktop actions */}
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden items-center gap-2.5 md:flex">
           {user ? (
             <>
               {user.role === "customer" && <NotificationButton />}

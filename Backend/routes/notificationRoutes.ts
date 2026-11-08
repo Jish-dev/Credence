@@ -12,7 +12,7 @@ import {
 
 import {
   protect,
-  customerOnly,
+  customerOrApprovedProvider,
   adminOnly,
 } from "../middleware/authMiddle.js";
 
@@ -20,18 +20,34 @@ const router = Router();
 
 router.use(protect);
 
-// CUSTOMER ROUTES
-router.get("/", customerOnly, getMyNotifications);
+// CUSTOMER + APPROVED PROVIDER
+router.get("/", customerOrApprovedProvider, getMyNotifications);
 
-router.get("/unread-count", customerOnly, getUnreadCount);
+router.get(
+  "/unread-count",
+  customerOrApprovedProvider,
+  getUnreadCount
+);
 
-router.patch("/read-all", customerOnly, markAllNotificationsAsRead);
+router.patch(
+  "/read-all",
+  customerOrApprovedProvider,
+  markAllNotificationsAsRead
+);
 
-router.patch("/:id/read", customerOnly, markNotificationAsRead);
+router.patch(
+  "/:id/read",
+  customerOrApprovedProvider,
+  markNotificationAsRead
+);
 
-router.delete("/:id", customerOnly, deleteNotification);
+router.delete(
+  "/:id",
+  customerOrApprovedProvider,
+  deleteNotification
+);
 
-// ADMIN ROUTES
+// ADMIN
 router.post("/admin/announcements", adminOnly, sendAnnouncement);
 
 export default router;

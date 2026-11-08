@@ -6,7 +6,6 @@ import {
   AlertCircle,
   ArrowUpRight,
   BarChart3,
-  Bell,
   BriefcaseBusiness,
   CalendarCheck,
   CalendarDays,
@@ -53,6 +52,7 @@ import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../hooks/usAuth";
 import api from "../services/api";
+import NotificationBell from "../components/NotificationBell";
 
 // =====================================================
 // TYPES
@@ -1209,14 +1209,7 @@ export default function ProviderDashboard() {
             >
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
-            <button
-              onClick={() => changeSection("bookings")}
-              aria-label={`Notifications: ${stats.pendingJobs} pending requests`}
-              className={`relative grid h-11 w-11 place-items-center rounded-full border border-[#E4EAE8] bg-white text-slate-600 transition hover:bg-[#E9F1EF] ${focusRing}`}
-            >
-              <Bell size={18} />
-              {stats.pendingJobs > 0 && <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white" />}
-            </button>
+            <NotificationBell />
             <div className="hidden items-center gap-3 sm:flex">
               <Avatar src={dashboard.provider.profileImage} name={providerName} size={44} />
               <div>

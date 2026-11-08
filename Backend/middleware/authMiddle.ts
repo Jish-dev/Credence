@@ -181,3 +181,34 @@ export const providerOnly = async (
     next(error);
   }
 };
+
+
+// ========================================
+// CUSTOMER OR APPROVED PROVIDER
+// ========================================
+
+export const customerOrApprovedProvider = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: "Please login first",
+    });
+  }
+
+  if (req.user.role === "customer") {
+    return customerOnly(req, res, next);
+  }
+
+  if (req.user.role === "provider") {
+    return providerOnly(req, res, next);
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: "Access denied",
+  });
+};

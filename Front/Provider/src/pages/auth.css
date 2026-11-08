@@ -1,0 +1,485 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap");
+
+.cred-auth-page {
+  --cred-green: #0f766e;
+  --cred-dark: #102b28;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 24px;
+  background: #eef3f1;
+  color: #172522;
+  font-family: "DM Sans", sans-serif;
+}
+
+.cred-auth-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 0.88fr;
+  width: min(1120px, 100%);
+  min-height: 650px;
+  overflow: hidden;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(16, 43, 40, 0.13);
+}
+
+.cred-auth-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 54px clamp(28px, 5vw, 76px);
+  background: #fff;
+  z-index: 2;
+}
+
+.cred-auth-form-inner {
+  width: 100%;
+  max-width: 440px;
+}
+
+.cred-auth-eyebrow {
+  margin: 0 0 12px;
+  color: var(--cred-green);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .17em;
+}
+
+.cred-auth-form h1 {
+  margin: 0;
+  color: #14211f;
+  font-size: clamp(30px, 3vw, 38px);
+  font-weight: 800;
+  letter-spacing: -.045em;
+}
+
+.cred-auth-subtitle {
+  margin: 9px 0 30px;
+  color: #77847f;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.cred-auth-fields {
+  display: grid;
+  gap: 18px;
+}
+
+.cred-auth-field {
+  display: grid;
+  gap: 8px;
+  color: #35433f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cred-auth-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cred-auth-input-wrap > svg {
+  position: absolute;
+  left: 15px;
+  color: #8a9993;
+  pointer-events: none;
+}
+
+.cred-auth-input-wrap input,
+.cred-auth-input-wrap select {
+  width: 100%;
+  min-height: 49px;
+  padding: 0 44px;
+  border: 1px solid #e0e8e4;
+  border-radius: 11px;
+  outline: none;
+  background: #f7f9f8;
+  color: #172522;
+  font: inherit;
+  font-size: 13px;
+  transition: border .2s, box-shadow .2s, background .2s;
+}
+
+.cred-auth-input-wrap input::placeholder {
+  color: #a2ada8;
+}
+
+.cred-auth-input-wrap input:focus,
+.cred-auth-input-wrap select:focus {
+  border-color: #0f766e;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, .09);
+}
+
+.cred-auth-password-toggle {
+  position: absolute;
+  right: 13px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #83918c;
+  cursor: pointer;
+}
+
+.cred-auth-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  margin-top: 24px;
+  border: 0;
+  border-radius: 11px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .2s, transform .2s;
+}
+
+.cred-auth-submit:hover {
+  background: #0b5f58;
+  transform: translateY(-1px);
+}
+
+.cred-auth-submit:disabled {
+  cursor: not-allowed;
+  opacity: .65;
+  transform: none;
+}
+
+.cred-auth-alert,
+.cred-auth-success {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.cred-auth-alert {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.cred-auth-success {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.cred-auth-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  overflow: hidden;
+  padding: 42px clamp(30px, 4vw, 56px);
+  background: linear-gradient(145deg, #123c37 0%, #0f766e 100%);
+  color: #fff;
+  isolation: isolate;
+}
+
+.cred-auth-panel::before {
+  position: absolute;
+  z-index: -1;
+  top: -180px;
+  right: -170px;
+  width: 460px;
+  height: 460px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 50%;
+  content: "";
+}
+
+.cred-auth-panel::after {
+  position: absolute;
+  z-index: -1;
+  right: -80px;
+  bottom: -230px;
+  width: 480px;
+  height: 480px;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 50%;
+  content: "";
+}
+
+.cred-auth-panel-brand,
+.cred-auth-mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+
+.cred-auth-logo {
+  display: grid;
+  width: 39px;
+  height: 39px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255,255,255,.15);
+  color: #fff;
+}
+
+.cred-auth-panel-dot {
+  color: #8ce0d3;
+}
+
+.cred-auth-panel-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 390px;
+  margin: auto 0;
+  padding: 48px 0;
+}
+
+.cred-auth-panel-kicker {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: #a8e1d8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .19em;
+}
+
+.cred-auth-panel-copy h2 {
+  margin: 0;
+  font-size: clamp(36px, 4vw, 52px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -.05em;
+}
+
+.cred-auth-panel-copy > p:not(.cred-auth-panel-small) {
+  max-width: 330px;
+  margin: 20px 0 0;
+  color: #d0e4df;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.cred-auth-panel-line {
+  width: 42px;
+  height: 3px;
+  margin: 30px 0 22px;
+  border-radius: 10px;
+  background: #8ce0d3;
+}
+
+.cred-auth-panel-small {
+  margin: 0 0 13px;
+  color: #c5ddd7;
+  font-size: 12px;
+}
+
+.cred-auth-outline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 43px;
+  padding: 0 19px;
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 9px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background .2s, color .2s;
+}
+
+.cred-auth-outline-btn:hover {
+  background: #fff;
+  color: #0f766e;
+}
+
+.cred-auth-panel-bottom {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: #b7d5ce;
+  font-size: 11px;
+}
+
+.cred-auth-panel-orbit {
+  position: absolute;
+  z-index: -1;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.cred-auth-orbit-one {
+  right: -35px;
+  top: 28%;
+  width: 180px;
+  height: 180px;
+}
+
+.cred-auth-orbit-two {
+  right: 25px;
+  top: 34%;
+  width: 95px;
+  height: 95px;
+}
+
+.cred-auth-mobile-brand,
+.cred-auth-switch-mobile {
+  display: none;
+}
+
+.cred-auth-footnote {
+  margin: 24px 0 0;
+  color: #a0aca7;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Registration page: wider form and a more compact field grid */
+.cred-auth-card-register {
+  grid-template-columns: .82fr 1.18fr;
+  min-height: 720px;
+}
+
+.cred-auth-register {
+  padding-top: 34px;
+  padding-bottom: 34px;
+}
+
+.cred-auth-register-inner {
+  max-width: 560px;
+}
+
+.cred-auth-register .cred-auth-subtitle {
+  margin-bottom: 20px;
+}
+
+.cred-auth-register-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px 15px;
+}
+
+.cred-auth-register-fields .cred-auth-field {
+  min-width: 0;
+}
+
+.cred-auth-register-fields .cred-auth-input-wrap input,
+.cred-auth-register-fields .cred-auth-input-wrap select {
+  min-height: 45px;
+  padding-left: 42px;
+  padding-right: 10px;
+  font-size: 12px;
+}
+
+.cred-auth-register-fields .cred-auth-field > span:first-child {
+  font-size: 11px;
+}
+
+.cred-auth-register-fields .cred-auth-password-field {
+  grid-column: 1 / -1;
+}
+
+.cred-auth-register .cred-auth-submit {
+  margin-top: 19px;
+}
+
+.cred-auth-register .cred-auth-footnote {
+  margin-top: 15px;
+}
+
+@media (max-width: 900px) {
+  .cred-auth-page {
+    padding: 20px;
+  }
+
+  .cred-auth-card,
+  .cred-auth-card-register {
+    grid-template-columns: 1fr;
+    max-width: 620px;
+    min-height: 0;
+  }
+
+  .cred-auth-panel {
+    display: none;
+  }
+
+  .cred-auth-form {
+    padding: 42px clamp(22px, 7vw, 54px);
+  }
+
+  .cred-auth-mobile-brand {
+    display: flex;
+    margin-bottom: 34px;
+    color: #14211f;
+  }
+
+  .cred-auth-mobile-brand .cred-auth-logo {
+    background: #0f766e;
+  }
+
+  .cred-auth-dot {
+    color: #0f766e;
+  }
+
+  .cred-auth-switch-mobile {
+    display: block;
+    margin: 22px 0 0;
+    color: #71807a;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .cred-auth-switch-mobile a {
+    color: #0f766e;
+    font-weight: 800;
+    text-decoration: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .cred-auth-page {
+    align-items: flex-start;
+    padding: 0;
+    background: #fff;
+  }
+
+  .cred-auth-card,
+  .cred-auth-card-register {
+    width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cred-auth-form {
+    align-items: flex-start;
+    padding: 28px 22px 36px;
+  }
+
+  .cred-auth-form-inner {
+    max-width: none;
+  }
+
+  .cred-auth-register-fields {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+
+  .cred-auth-register-fields .cred-auth-password-field {
+    grid-column: auto;
+  }
+
+  .cred-auth-register .cred-auth-subtitle {
+    margin-bottom: 22px;
+  }
+}
