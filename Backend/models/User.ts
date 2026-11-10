@@ -16,19 +16,18 @@ export interface IUser {
   email: string;
   phone: string;
   password: string;
-
+  googleId?: string;
   role: UserRole;
   providerApprovalStatus?: ProviderApprovalStatus;
 
   profileImage: string;
   isActive: boolean;
 
-  resetOtp?: string;
-  resetOtpExpires?: Date;
-  resetOtpLastSentAt?: Date;
-  resetOtpAttempts?: number;
-  resetOtpVerified?: boolean;
-
+  resetOtp?: string | undefined;
+  resetOtpExpires?: Date | undefined;
+  resetOtpLastSentAt?: Date | undefined;
+  resetOtpAttempts?: number | undefined;
+  resetOtpVerified?: boolean | undefined;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -110,6 +109,12 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       default: false,
       select: false,
+    },
+
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
 
     resetOtpLastSentAt: {

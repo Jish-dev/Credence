@@ -1,4 +1,3 @@
-
 import type { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -6,7 +5,11 @@ import { z } from "zod";
 import User from "../models/User.js";
 import crypto from "crypto";
 import { sendPasswordResetOTP } from "../config/email.js";
-import Provider from "../models/Provider.js";
+import { OAuth2Client } from "google-auth-library";
+
+// ========================================
+// VALIDATION SCHEMAS
+// ========================================
 
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -34,6 +37,10 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(6).max(100),
 });
 
+// ========================================
+// JWT CONFIGURATION
+// ========================================
+
 const generateToken = (userId: string, role: string) => {
   const secret = process.env.JWT_SECRET;
 
@@ -52,6 +59,9 @@ const generateToken = (userId: string, role: string) => {
     }
   );
 };
+
+// Google verifies the ID token; CREDENCE issues its own JWT afterwards.
+const googleClient = new OAuth2Client();
 
 // ========================================
 // CUSTOMER REGISTER
@@ -75,12 +85,9 @@ export const register = async (
     }
 
     const { name, email, phone, password } = parsed.data;
-
     const normalizedEmail = email.toLowerCase();
 
-    const existingUser = await User.findOne({
-      email: normalizedEmail,
-    });
+    const existingUser = await User.findOne({ email: normalizedEmail });
 
     if (existingUser) {
       return res.status(409).json({
@@ -99,10 +106,7 @@ export const register = async (
       role: "customer",
     });
 
-    const token = generateToken(
-      user._id.toString(),
-      user.role
-    );
+    const token = generateToken(user._id.toString(), user.role);
 
     return res.status(201).json({
       success: true,
@@ -122,7 +126,7 @@ export const register = async (
 };
 
 // ========================================
-// LOGIN
+// EMAIL + PASSWORD LOGIN
 // POST /api/v1/auth/login
 // ========================================
 
@@ -162,10 +166,7 @@ export const login = async (
       });
     }
 
-    const passwordMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
       return res.status(401).json({
@@ -174,7 +175,7 @@ export const login = async (
       });
     }
 
-    // Provider approval check
+    // Retained for compatibility with existing provider accounts.
     if (user.role === "provider") {
       if (user.providerApprovalStatus === "pending") {
         return res.status(403).json({
@@ -200,10 +201,7 @@ export const login = async (
       }
     }
 
-    const token = generateToken(
-      user._id.toString(),
-      user.role
-    );
+    const token = generateToken(user._id.toString(), user.role);
 
     return res.status(200).json({
       success: true,
@@ -218,6 +216,160 @@ export const login = async (
       },
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+// ========================================
+// GOOGLE SIGN-IN
+// POST /api/v1/auth/google
+// Body: { credential: string }
+// ========================================
+
+export const googleLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const credential = req.body?.credential;
+
+    if (typeof credential !== "string" || !credential.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Google credential is required",
+      });
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+      throw new Error("GOOGLE_CLIENT_ID is missing in .env");
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: clientId,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (
+      !payload ||
+      !payload.sub ||
+      !payload.email ||
+      payload.email_verified !== true
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Google account verification failed",
+      });
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email.toLowerCase();
+    const name = payload.name?.trim() || email.split("@")[0] || "Google User";
+    const profileImage = payload.picture || "";
+
+    // First, find an account already linked to this Google identity.
+    let user = await User.findOne({ googleId });
+
+    if (!user) {
+      // Then check whether this verified email already belongs to a user.
+      user = await User.findOne({ email }).select("+password");
+
+      if (user) {
+        // Never convert or sign in an admin/provider through customer Google login.
+        if (user.role !== "customer") {
+          return res.status(403).json({
+            success: false,
+            message: "Please use the appropriate account login.",
+          });
+        }
+
+        if (!user.isActive) {
+          return res.status(403).json({
+            success: false,
+            message: "Your account has been deactivated",
+          });
+        }
+
+        if (user.googleId && user.googleId !== googleId) {
+          return res.status(409).json({
+            success: false,
+            message: "This account is linked to another Google account.",
+          });
+        }
+
+        // Link the verified Google identity to the existing customer account.
+        user.googleId = googleId;
+
+        if (!user.profileImage && profileImage) {
+          user.profileImage = profileImage;
+        }
+
+        await user.save();
+      } else {
+        // Create a customer account with a random, non-user-known password hash.
+        const randomPassword = crypto.randomBytes(32).toString("hex");
+        const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+        user = await User.create({
+          name,
+          email,
+          phone: "",
+          password: hashedPassword,
+          googleId,
+          profileImage,
+          role: "customer",
+          isActive: true,
+        });
+      }
+    }
+
+    if (user.role !== "customer") {
+      return res.status(403).json({
+        success: false,
+        message: "Please use the customer login.",
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been deactivated",
+      });
+    }
+
+    const token = generateToken(user._id.toString(), user.role);
+
+    return res.status(200).json({
+      success: true,
+      message: "Google sign-in successful",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        profileImage: user.profileImage,
+      },
+    });
+  } catch (error) {
+    // A duplicate email/googleId can occur if two first-time requests race.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: number }).code === 11000
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: "This Google account is already linked. Please try signing in again.",
+      });
+    }
+
     next(error);
   }
 };
@@ -240,9 +392,7 @@ export const getMe = async (
       });
     }
 
-    const user = await User.findById(req.user.id).select(
-      "-password"
-    );
+    const user = await User.findById(req.user.id).select("-password");
 
     if (!user || !user.isActive) {
       return res.status(404).json({
@@ -259,7 +409,6 @@ export const getMe = async (
     next(error);
   }
 };
-
 
 // ========================================
 // FORGOT PASSWORD - SEND OTP
@@ -311,11 +460,7 @@ export const forgotPassword = async (
 
     const otp = crypto.randomInt(100000, 1000000).toString();
 
-    user.resetOtp = crypto
-      .createHash("sha256")
-      .update(otp)
-      .digest("hex");
-
+    user.resetOtp = crypto.createHash("sha256").update(otp).digest("hex");
     user.resetOtpExpires = new Date(now + 5 * 60 * 1000);
     user.resetOtpAttempts = 0;
     user.resetOtpVerified = false;
@@ -326,13 +471,12 @@ export const forgotPassword = async (
     try {
       await sendPasswordResetOTP(user.email, otp);
     } catch (emailError) {
-      delete user.resetOtp;
-      delete user.resetOtpExpires
+      user.resetOtp = undefined;
+      user.resetOtpExpires = undefined;
       user.resetOtpAttempts = 0;
       user.resetOtpVerified = false;
-      delete user.resetOtpLastSentAt;
+      user.resetOtpLastSentAt = undefined;
       await user.save();
-
       throw emailError;
     }
 
@@ -389,8 +533,8 @@ export const verifyResetOtp = async (
     }
 
     if ((user.resetOtpAttempts ?? 0) >= 5) {
-      delete user.resetOtp;
-      delete user.resetOtpExpires;
+      user.resetOtp = undefined;
+      user.resetOtpExpires = undefined;
       user.resetOtpAttempts = 0;
       user.resetOtpVerified = false;
       await user.save();
@@ -401,10 +545,7 @@ export const verifyResetOtp = async (
       });
     }
 
-    const submittedHash = crypto
-      .createHash("sha256")
-      .update(otp)
-      .digest("hex");
+    const submittedHash = crypto.createHash("sha256").update(otp).digest("hex");
 
     if (submittedHash !== user.resetOtp) {
       user.resetOtpAttempts = (user.resetOtpAttempts ?? 0) + 1;
@@ -418,14 +559,12 @@ export const verifyResetOtp = async (
     }
 
     // Generate a separate one-time reset token.
-    // The frontend receives this only after successful OTP verification.
     const resetToken = crypto.randomBytes(32).toString("hex");
 
     user.resetOtp = crypto
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
-
     user.resetOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
     user.resetOtpVerified = true;
 
@@ -486,11 +625,11 @@ export const resetPassword = async (
 
     user.password = await bcrypt.hash(newPassword, 10);
 
-    delete user.resetOtp;
-    delete user.resetOtpExpires;
+    user.resetOtp = undefined;
+    user.resetOtpExpires = undefined;
     user.resetOtpAttempts = 0;
     user.resetOtpVerified = false;
-    delete user.resetOtpLastSentAt;
+    user.resetOtpLastSentAt = undefined;
 
     await user.save();
 

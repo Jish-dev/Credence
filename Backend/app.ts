@@ -20,6 +20,7 @@ import dashboardRoutes from "./routes/dashboardRoute.js";
 import paymentRoutes from "./routes/paymentRoute.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import providerAuthRoutes from "./routes/providerAuthRoutes.js";
+import orinRoutes from "./routes/orinroutes.js";
 
 // ========================================
 // CONTROLLERS
@@ -157,6 +158,7 @@ app.use("/api/v1/admin/upload", uploadRoutes);
 
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/provider-auth", providerAuthRoutes);
+app.use("/api/v1/orin", orinRoutes);
 // ========================================
 // 404 HANDLER
 // ========================================

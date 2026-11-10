@@ -2,12 +2,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { ArrowLeft, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Mail, ShieldCheck, RefreshCw } from "lucide-react";
 
 export default function VerifyOTP() {
   const navigate = useNavigate();
   const location = useLocation();
-
   const email = location.state?.email || "";
 
   const [otp, setOtp] = useState("");
@@ -15,27 +14,24 @@ export default function VerifyOTP() {
   const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(60);
-
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!email) {
-      navigate("/forgot-password", { replace: true });
-    }
+    if (!email) navigate("/forgot-password", { replace: true });
   }, [email, navigate]);
 
   useEffect(() => {
     if (countdown <= 0) return;
 
-    const timer = setInterval(() => {
+    const timer = window.setInterval(() => {
       setCountdown((current) => Math.max(0, current - 1));
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => window.clearInterval(timer);
   }, [countdown]);
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError("");
 
     if (otp.length !== 6) {
@@ -45,16 +41,13 @@ export default function VerifyOTP() {
 
     try {
       setLoading(true);
-
       const response = await api.post("/auth/verify-reset-otp", {
         email,
         otp,
       });
 
       navigate("/reset-password", {
-        state: {
-          resetToken: response.data.resetToken,
-        },
+        state: { resetToken: response.data.resetToken },
         replace: true,
       });
     } catch (err) {
@@ -72,9 +65,7 @@ export default function VerifyOTP() {
 
     try {
       setResending(true);
-
       await api.post("/auth/forgot-password", { email });
-
       setCountdown(60);
       inputRef.current?.focus();
     } catch (err) {
@@ -89,112 +80,132 @@ export default function VerifyOTP() {
   if (!email) return null;
 
   return (
-    <div className="min-h-screen bg-[#f7f8f6] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <main className="fixed inset-0 isolate flex h-dvh w-full items-center justify-center overflow-hidden bg-[#eaf5f0] p-3 sm:p-4">
 
-        <Link to="/" className="flex justify-center mb-8">
-          <span className="text-3xl font-bold tracking-tight text-[#153d32]">
-            CREDENCE<span className="text-[#78a891]">.</span>
-          </span>
+      {/* Fixed Background */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10">
+        <img
+          src="/login-bg.avif"
+          alt=""
+          className="h-full w-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-[#102b20]/35" />
+      </div>
+
+      {/* Compact OTP Card */}
+      <section className="relative z-10 w-full max-w-[400px] max-h-full overflow-y-auto rounded-[24px] border border-white/70 bg-white/95 px-5 py-5 shadow-[0_20px_70px_rgba(15,45,32,0.22)] backdrop-blur-xl sm:px-7 sm:py-6">
+
+        {/* Back */}
+        <Link
+          to="/forgot-password"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition hover:text-emerald-800"
+        >
+          <ArrowLeft size={15} />
+          Back
         </Link>
 
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-7 sm:p-9">
+        {/* Header */}
+        <div className="mt-3 text-center">
 
-          <Link
-            to="/forgot-password"
-            className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#315f4c] mb-7"
-          >
-            <ArrowLeft size={16} />
-            Back
-          </Link>
-
-          <div className="mb-7">
-            <div className="w-12 h-12 rounded-xl bg-[#eaf3ed] flex items-center justify-center mb-5">
-              <ShieldCheck size={24} className="text-[#315f4c]" />
-            </div>
-
-            <p className="text-sm font-semibold text-[#72917e] mb-2">
-              EMAIL VERIFICATION
-            </p>
-
-            <h1 className="text-2xl font-bold text-gray-900">
-              Verify your email
-            </h1>
-
-            <p className="text-sm text-gray-500 mt-2 leading-6">
-              Enter the 6-digit verification code sent to:
-            </p>
-
-            <div className="flex items-center gap-2 mt-3 text-sm font-semibold text-[#315f4c]">
-              <Mail size={16} />
-              {email}
-            </div>
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#eaf3ed] text-[#315f4c]">
+            <ShieldCheck size={21} strokeWidth={1.8} />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <p className="mb-1 text-[9px] font-bold tracking-[0.2em] text-[#72917e]">
+            EMAIL VERIFICATION
+          </p>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Verification code
-              </label>
+          <h1 className="text-[23px] font-bold tracking-tight text-[#142e23]">
+            Verify your email
+          </h1>
 
-              <input
-                ref={inputRef}
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                value={otp}
-                onChange={(e) =>
-                  setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
-                placeholder="000000"
-                className="w-full rounded-xl border border-gray-200 px-4 py-4 text-center text-2xl font-bold tracking-[0.6em] outline-none focus:border-[#315f4c] focus:ring-2 focus:ring-[#315f4c]/10"
-              />
-            </div>
+          <p className="mx-auto mt-1.5 max-w-[290px] text-[13px] leading-5 text-slate-500">
+            Enter the 6-digit verification code we sent to your email address.
+          </p>
 
-            {error && (
-              <div className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-600">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || otp.length !== 6}
-              className="w-full rounded-xl bg-[#244b3b] hover:bg-[#193c2e] disabled:opacity-60 text-white font-semibold py-3.5 text-sm transition-colors"
-            >
-              {loading ? "Verifying..." : "Verify OTP"}
-            </button>
-
-          </form>
-
-          <div className="text-center mt-6">
-            <p className="text-sm text-gray-500">
-              Didn't receive the code?
-            </p>
-
-            {countdown > 0 ? (
-              <p className="mt-2 text-sm text-gray-400">
-                Resend available in{" "}
-                <span className="font-semibold text-[#315f4c]">
-                  {countdown}s
-                </span>
-              </p>
-            ) : (
-              <button
-                type="button"
-                onClick={handleResend}
-                disabled={resending}
-                className="mt-2 text-sm font-semibold text-[#315f4c] hover:underline disabled:opacity-50"
-              >
-                {resending ? "Sending..." : "Resend OTP"}
-              </button>
-            )}
+          {/* Email */}
+          <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full bg-[#edf5f0] px-3 py-1.5 text-xs font-semibold text-[#315f4c]">
+            <Mail size={14} className="shrink-0" />
+            <span className="truncate">{email}</span>
           </div>
-
         </div>
-      </div>
-    </div>
+
+        {/* OTP Form */}
+        <form onSubmit={handleSubmit} className="mt-5 space-y-3">
+
+          <div>
+            <label
+              htmlFor="otp"
+              className="mb-1.5 block text-xs font-semibold text-slate-600"
+            >
+              Verification code
+            </label>
+
+            <input
+              ref={inputRef}
+              id="otp"
+              name="otp"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={otp}
+              onChange={(event) =>
+                setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              placeholder="000000"
+              required
+              className="h-[50px] w-full rounded-xl border border-slate-200 bg-[#f7faf8] px-4 text-center text-xl font-bold tracking-[0.65em] text-[#193c2e] outline-none transition placeholder:text-slate-300 focus:border-emerald-700 focus:bg-white focus:ring-2 focus:ring-emerald-700/10"
+            />
+          </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600"
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || otp.length !== 6}
+            className="w-full rounded-xl bg-[#244b3b] py-3 text-sm font-semibold text-white transition hover:bg-[#193c2e] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Verifying..." : "Verify OTP"}
+          </button>
+        </form>
+
+        {/* Resend */}
+        <div className="mt-4 border-t border-slate-100 pt-3 text-center">
+          <p className="text-xs text-slate-500">
+            Didn't receive the code?
+          </p>
+
+          {countdown > 0 ? (
+            <p className="mt-1.5 text-xs text-slate-400">
+              Resend available in{" "}
+              <span className="font-semibold text-[#315f4c]">
+                {countdown}s
+              </span>
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending}
+              className="mt-1.5 inline-flex items-center gap-2 text-xs font-semibold text-[#315f4c] transition hover:text-emerald-900 hover:underline disabled:opacity-50"
+            >
+              <RefreshCw
+                size={13}
+                className={resending ? "animate-spin" : ""}
+              />
+              {resending ? "Sending..." : "Resend OTP"}
+            </button>
+          )}
+        </div>
+      </section>
+    </main>
   );
 }

@@ -1,29 +1,7 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  ArrowLeft,
-  BadgeCheck,
-  CalendarDays,
-  Grid2X2,
-  Heart,
-  Home,
-  MapPin,
-  MessageCircle,
-  Phone,
-  Plug,
-  Share2,
-  ShieldCheck,
-  Star,
-  Users,
-  Wrench,
-  Zap,
-  Settings,
-  BriefcaseBusiness,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-} from "lucide-react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { Star } from "lucide-react";
 import { api } from "../api";
 
 // ========================================
@@ -83,33 +61,14 @@ interface ReviewResponse {
   };
 }
 
-interface ProviderResponse {
-  provider?: Provider;
-  data?: {
-    provider?: Provider;
-  };
-}
-
 type Tab = "overview" | "services" | "reviews";
 
 // ========================================
-// CONSTANTS
+// CONSTANTS & HELPERS
 // ========================================
-
-const serviceIcons = [Zap, Plug, Wrench, Settings];
-
-const serviceDescriptions = [
-  "Home & office wiring",
-  "Fans, lights, switches",
-  "Quick and reliable repair",
-  "Periodic service and checkup",
-];
 
 const reviewLimit = 5;
-
-// ========================================
-// HELPERS
-// ========================================
+const easeOut = [0.22, 1, 0.36, 1] as const;
 
 const formatDate = (date: string) =>
   new Date(date).toLocaleDateString("en-IN", {
@@ -124,31 +83,40 @@ const getCustomerName = (customer: ReviewCustomer | string) =>
 const getCustomerImage = (customer: ReviewCustomer | string) =>
   typeof customer === "string" ? "" : customer?.profileImage || "";
 
-// ========================================
-// STAR DISPLAY
-// ========================================
-
-function StarRating({
-  rating,
-  size = 16,
-}: {
-  rating: number;
-  size?: number;
-}) {
+function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-0.5" aria-label={`${rating} out of 5`}>
       {[1, 2, 3, 4, 5].map((star) => (
         <Star
           key={star}
           size={size}
+          aria-hidden="true"
           className={
             star <= Math.round(rating)
               ? "fill-amber-400 text-amber-400"
-              : "text-gray-300"
+              : "text-slate-300"
           }
         />
       ))}
     </div>
+  );
+}
+
+function ServiceList({ services }: { services: string[] }) {
+  return (
+    <ul className="divide-y divide-slate-200 border-y border-slate-200">
+      {services.map((service, index) => (
+        <motion.li
+          key={`${service}-${index}`}
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.45, delay: index * 0.06, ease: easeOut }}
+          className="py-4 text-base font-medium text-slate-900"
+        >
+          {service}
+        </motion.li>
+      ))}
+    </ul>
   );
 }
 
@@ -166,6 +134,7 @@ export default function ProviderDetails() {
 
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [favorite, setFavorite] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Review state
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -174,6 +143,7 @@ export default function ProviderDetails() {
   const [reviewPage, setReviewPage] = useState(1);
   const [reviewPages, setReviewPages] = useState(1);
   const [reviewTotal, setReviewTotal] = useState(0);
+  const [reviewRefresh, setReviewRefresh] = useState(0);
 
   // ========================================
   // LOAD PROVIDER
@@ -197,18 +167,13 @@ export default function ProviderDetails() {
         const result = response.data;
 
         const data =
-          result?.provider ??
-          result?.data?.provider ??
-          result?.data ??
-          result;
+          result?.provider ?? result?.data?.provider ?? result?.data ?? result;
 
         if (!data?._id) {
           throw new Error("Provider details not found.");
         }
 
-        if (mounted) {
-          setProvider(data);
-        }
+        if (mounted) setProvider(data);
       } catch (err: any) {
         if (mounted) {
           setError(
@@ -218,9 +183,7 @@ export default function ProviderDetails() {
           );
         }
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
 
@@ -247,12 +210,7 @@ export default function ProviderDetails() {
 
         const response = await api.get<ReviewResponse>(
           `/reviews/provider/${id}`,
-          {
-            params: {
-              page: reviewPage,
-              limit: reviewLimit,
-            },
-          }
+          { params: { page: reviewPage, limit: reviewLimit } }
         );
 
         if (!mounted) return;
@@ -271,9 +229,7 @@ export default function ProviderDetails() {
           );
         }
       } finally {
-        if (mounted) {
-          setReviewsLoading(false);
-        }
+        if (mounted) setReviewsLoading(false);
       }
     };
 
@@ -282,18 +238,21 @@ export default function ProviderDetails() {
     return () => {
       mounted = false;
     };
-  }, [id, reviewPage]);
+  }, [id, reviewPage, reviewRefresh]);
+
+  const refreshReviews = () => {
+    setReviewPage(1);
+    setReviewRefresh((value) => value + 1);
+  };
 
   // ========================================
-  // PROVIDER DETAILS
+  // DERIVED DATA
   // ========================================
 
   const location =
     [provider?.area, provider?.city, provider?.location]
       .filter(Boolean)
-      .filter(
-        (value, index, values) => values.indexOf(value) === index
-      )
+      .filter((value, index, values) => values.indexOf(value) === index)
       .join(", ") ||
     provider?.address ||
     "Location not available";
@@ -306,20 +265,14 @@ export default function ProviderDetails() {
       ? [provider.category]
       : [];
 
-  // ========================================
-  // RATING DISTRIBUTION
-  // ========================================
-
+  // Distribution is based on the reviews loaded for the current page.
   const ratingCounts = [5, 4, 3, 2, 1].map((star) => ({
     star,
     count: reviews.filter((review) => review.rating === star).length,
   }));
 
-  const averageRating =
-    provider?.averageRating || 0;
-
-  const totalReviews =
-    provider?.reviewCount ?? reviewTotal;
+  const averageRating = provider?.averageRating || 0;
+  const totalReviews = provider?.reviewCount ?? reviewTotal;
 
   // ========================================
   // ACTIONS
@@ -335,6 +288,8 @@ export default function ProviderDetails() {
         });
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(window.location.href);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
       }
     } catch {
       // User cancelled sharing.
@@ -350,9 +305,7 @@ export default function ProviderDetails() {
   };
 
   const bookNow = () => {
-    if (provider?._id) {
-      navigate(`/booking?providerId=${provider._id}`);
-    }
+    if (provider?._id) navigate(`/booking?providerId=${provider._id}`);
   };
 
   // ========================================
@@ -361,14 +314,19 @@ export default function ProviderDetails() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center bg-[#fbf9f6]">
-        <div className="text-center">
-          <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-700" />
-          <p className="mt-3 text-sm text-slate-500">
-            Loading professional...
-          </p>
+      <main className="min-h-screen bg-white px-4 pt-5 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl animate-pulse">
+          <div className="grid gap-8 md:grid-cols-[13rem_1fr]">
+            <div className="aspect-square w-40 rounded-xl bg-slate-100 md:w-full" />
+            <div className="space-y-4 pt-2">
+              <div className="h-9 w-2/3 rounded bg-slate-100" />
+              <div className="h-4 w-1/3 rounded bg-slate-100" />
+              <div className="h-4 w-1/2 rounded bg-slate-100" />
+            </div>
+          </div>
+          <div className="mt-12 h-48 rounded-xl bg-slate-100" />
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -378,675 +336,566 @@ export default function ProviderDetails() {
 
   if (error || !provider) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center bg-[#fbf9f6] px-5">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <h2 className="text-xl font-bold text-slate-900">
-            Provider not found
+      <main className="flex min-h-[70vh] items-center justify-center bg-white px-5">
+        <div className="max-w-md rounded-xl border border-slate-200 p-8 text-center">
+          <h2 className="text-xl font-semibold text-slate-900">
+            We couldn't find this professional
           </h2>
-
-          <p className="mt-2 text-sm text-slate-500">
-            {error || "This provider is unavailable."}
+          <p className="mt-2 text-sm text-slate-600">
+            {error || "This profile is unavailable."}
           </p>
-
           <button
             onClick={() => navigate(-1)}
-            className="mt-5 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white"
+            className="mt-6 rounded-lg bg-emerald-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-900"
           >
-            Go Back
+            Go back
           </button>
         </div>
-      </div>
+      </main>
     );
   }
 
-  const rating = averageRating
-    ? averageRating.toFixed(1)
-    : "New";
-
+  const rating = averageRating ? averageRating.toFixed(1) : "New";
+  const verified = provider.verificationStatus === "verified";
   const experience =
     provider.experienceYears != null
-      ? `${provider.experienceYears}+ Years`
-      : "Experience not listed";
+      ? `${provider.experienceYears}+ years`
+      : "Not listed";
+  const price =
+    provider.startingPrice != null
+      ? `₹${provider.startingPrice.toLocaleString("en-IN")}`
+      : null;
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "services", label: "Services" },
+    { id: "reviews", label: `Reviews (${totalReviews})` },
+  ];
 
   // ========================================
   // UI
   // ========================================
 
   return (
-    <main className="min-h-screen bg-[#fbf9f6] px-4 pb-12 pt-5 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1500px]">
-
-        {/* PROVIDER HERO */}
-
-        <section className="relative isolate min-h-[270px] overflow-hidden rounded-[26px] bg-[#004b34] text-white shadow-sm sm:min-h-[285px]">
-          <div className="absolute inset-0 -z-20 bg-gradient-to-r from-[#00533a] via-[#00442f] to-[#062c24]" />
-
-          <div className="absolute inset-0 -z-10 opacity-35">
-            <img
-              src="/images/electrician-banner.jpg"
-              alt=""
-              className="h-full w-full object-cover object-center"
-              onError={(event) => {
-                event.currentTarget.style.display = "none";
-              }}
-            />
-          </div>
-
-          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#004b34] via-[#004b34]/90 to-[#004b34]/15" />
-
+    <MotionConfig reducedMotion="user">
+      <main className="min-h-screen bg-white px-4 pb-28 pt-5 text-slate-900 selection:bg-emerald-100 sm:px-6 lg:px-8 lg:pb-16">
+        <div className="mx-auto max-w-6xl">
           <button
             onClick={() => navigate(-1)}
-            className="absolute left-5 top-5 inline-flex items-center gap-2 rounded-full bg-black/15 px-3 py-2 text-xs font-semibold text-white/90 backdrop-blur-sm hover:bg-black/25 sm:left-7"
+            className="text-sm font-medium text-slate-600 underline decoration-slate-300 underline-offset-4 transition-colors hover:text-emerald-800 hover:decoration-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
           >
-            <ArrowLeft size={16} />
-            Back to Results
+            Back to results
           </button>
 
-          <div className="absolute right-5 top-5 flex gap-2 sm:right-7">
-            <button
-              onClick={shareProfile}
-              aria-label="Share profile"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-800 shadow-md hover:bg-slate-100"
-            >
-              <Share2 size={20} />
-            </button>
+          {/* PROFILE HEADER */}
 
-            <button
-              onClick={() => setFavorite((value) => !value)}
-              aria-label="Save provider"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-red-500 shadow-md hover:bg-red-50"
+          <motion.header
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: easeOut }}
+            className="mt-6 grid gap-8 border-b border-slate-200 pb-10 md:grid-cols-[13rem_1fr]"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6, delay: 0.1, ease: easeOut }}
+              className="relative aspect-square w-40 overflow-hidden rounded-xl bg-emerald-100 md:w-full"
             >
-              <Heart
-                size={22}
-                fill={favorite ? "currentColor" : "none"}
-              />
-            </button>
-          </div>
-
-          <div className="flex min-h-[270px] flex-col items-center gap-5 px-5 pb-6 pt-20 sm:min-h-[285px] sm:flex-row sm:items-end sm:gap-8 sm:px-14 sm:pb-0 sm:pt-12">
-            <div className="h-40 w-40 shrink-0 overflow-hidden rounded-[25px] border-[4px] border-white bg-emerald-100 shadow-xl sm:h-52 sm:w-52 sm:translate-y-1">
-              {provider.profileImage ? (
+              <div className="flex h-full w-full items-center justify-center text-6xl font-semibold text-emerald-800/40">
+                {provider.name.charAt(0).toUpperCase()}
+              </div>
+              {provider.profileImage && (
                 <img
                   src={provider.profileImage}
                   alt={provider.name}
-                  className="h-full w-full object-cover"
+                  className="absolute inset-0 h-full w-full object-cover"
                   onError={(event) => {
                     event.currentTarget.style.display = "none";
                   }}
                 />
-              ) : (
-                <div className="flex h-full items-center justify-center text-5xl font-bold text-emerald-800">
-                  {provider.name.charAt(0).toUpperCase()}
-                </div>
               )}
-            </div>
+            </motion.div>
 
-            <div className="min-w-0 flex-1 pb-7 text-center sm:pb-11 sm:text-left">
-              {provider.verificationStatus === "verified" && (
-                <span className="inline-flex items-center gap-2 rounded-full bg-[#dff8e8] px-3 py-1.5 text-xs font-bold text-[#006b3f]">
-                  <ShieldCheck size={15} />
-                  Verified Provider
-                </span>
-              )}
-
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-[34px]">
-                  {provider.name}
-                </h1>
-
-                {provider.verificationStatus === "verified" && (
-                  <BadgeCheck
-                    size={27}
-                    fill="white"
-                    className="text-emerald-700"
-                  />
-                )}
-              </div>
-
-              <p className="mt-1 text-sm font-medium text-white/90 sm:text-base">
-                {provider.title || provider.category || "Professional Services"}
-              </p>
-
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-3 text-sm font-medium text-white sm:justify-start">
-                <span className="inline-flex items-center gap-2">
-                  <Star
-                    size={20}
-                    fill="#fbbf24"
-                    className="text-amber-400"
-                  />
-                  <strong className="text-base">{rating}</strong>
-                  <span className="text-white/85">
-                    ({totalReviews} Reviews)
-                  </span>
-                </span>
-
-                <span className="hidden h-5 w-px bg-white/40 sm:block" />
-
-                <span className="inline-flex items-center gap-2">
-                  <BriefcaseBusiness size={20} />
-                  {experience}
-                </span>
-
-                <span className="hidden h-5 w-px bg-white/40 sm:block" />
-
-                <span className="inline-flex items-center gap-2">
-                  <MapPin size={20} />
-                  {location}
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* TABS */}
-
-        <div className="mt-7 flex flex-wrap gap-3">
-          {([
-            { id: "overview", label: "Overview", Icon: Home },
-            { id: "services", label: "Services", Icon: Grid2X2 },
-            { id: "reviews", label: "Reviews", Icon: Star },
-          ] as const).map(({ id: tab, label, Icon }) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`inline-flex min-w-[150px] items-center justify-center gap-2.5 rounded-2xl border px-6 py-3 text-sm font-semibold shadow-sm transition sm:min-w-[190px] sm:text-base ${
-                activeTab === tab
-                  ? "border-emerald-800 bg-emerald-800 text-white"
-                  : "border-slate-200 bg-white text-slate-800 hover:border-emerald-200 hover:bg-emerald-50"
-              }`}
-            >
-              <Icon size={21} />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* MAIN CONTENT */}
-
-        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(310px,0.46fr)]">
-          <div className="space-y-5">
-
-            {/* OVERVIEW TAB */}
-
-            {activeTab === "overview" && (
-              <>
-                <section className="relative overflow-hidden rounded-[24px] border border-slate-200/70 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,0.045)] sm:p-7">
-                  <div className="pointer-events-none absolute -right-5 -top-5 text-emerald-100">
-                    <Zap size={145} strokeWidth={0.8} />
-                  </div>
-
-                  <div className="relative">
-                    <h2 className="text-xl font-extrabold tracking-tight sm:text-2xl">
-                      About {provider.name}
-                    </h2>
-
-                    <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700 sm:text-[15px] sm:leading-7">
-                      {provider.description ||
-                        provider.bio ||
-                        "Professional service provider offering reliable and quality services. Contact the provider to learn more."}
-                    </p>
-
-                    <div className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-5 sm:grid-cols-4 sm:gap-3">
-                      <div className="flex flex-col items-center text-center">
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-800">
-                          <ShieldCheck size={26} />
-                        </span>
-
-                        <strong className="mt-2 text-sm">
-                          {provider.verificationStatus === "verified"
-                            ? "Verified"
-                            : "Listed"}
-                        </strong>
-
-                        <span className="text-xs text-slate-500">
-                          Provider
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col items-center text-center">
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-800">
-                          <BadgeCheck size={26} />
-                        </span>
-
-                        <strong className="mt-2 text-sm">
-                          {provider.experienceYears != null
-                            ? `${provider.experienceYears}+ Years`
-                            : "N/A"}
-                        </strong>
-
-                        <span className="text-xs text-slate-500">
-                          Experience
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col items-center text-center">
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-800">
-                          <Users size={26} />
-                        </span>
-
-                        <strong className="mt-2 text-sm">
-                          {totalReviews}
-                        </strong>
-
-                        <span className="text-xs text-slate-500">
-                          Reviews
-                        </span>
-                      </div>
-
-                      <div className="flex flex-col items-center text-center">
-                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-800">
-                          <Star size={26} />
-                        </span>
-
-                        <strong className="mt-2 text-sm">{rating}</strong>
-
-                        <span className="text-xs text-slate-500">
-                          Average Rating
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-[24px] border border-slate-200/70 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,0.04)] sm:p-6">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <h2 className="text-xl font-extrabold tracking-tight sm:text-2xl">
-                      Services Offered
-                    </h2>
-
-                    <button
-                      onClick={() => setActiveTab("services")}
-                      className="inline-flex shrink-0 items-center gap-2 text-sm font-bold text-emerald-800 hover:text-emerald-950"
-                    >
-                      View All <span aria-hidden="true">→</span>
-                    </button>
-                  </div>
-
-                  {services.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      {services.slice(0, 4).map((service, index) => {
-                        const ServiceIcon =
-                          serviceIcons[index % serviceIcons.length];
-
-                        return (
-                          <div
-                            key={`${service}-${index}`}
-                            className="min-h-[132px] rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_3px_10px_rgba(15,23,42,0.045)]"
-                          >
-                            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-800">
-                              <ServiceIcon
-                                size={25}
-                                fill={
-                                  service === "Electrical Wiring"
-                                    ? "currentColor"
-                                    : "none"
-                                }
-                              />
-                            </span>
-
-                            <h3 className="mt-3 text-sm font-extrabold text-slate-950">
-                              {service}
-                            </h3>
-
-                            <p className="mt-1 text-xs leading-5 text-slate-600">
-                              {serviceDescriptions[index % serviceDescriptions.length]}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">
-                      No services have been added yet.
-                    </p>
-                  )}
-                </section>
-              </>
-            )}
-
-            {/* SERVICES TAB */}
-
-            {activeTab === "services" && (
-              <section className="rounded-[24px] border border-slate-200/70 bg-white p-5 shadow-sm sm:p-7">
-                <h2 className="text-xl font-extrabold sm:text-2xl">
-                  Services Offered
-                </h2>
-
-                {services.length ? (
-                  <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {services.map((service, index) => {
-                      const ServiceIcon =
-                        serviceIcons[index % serviceIcons.length];
-
-                      return (
-                        <div
-                          key={`${service}-${index}`}
-                          className="flex items-center gap-4 rounded-2xl border border-slate-200 p-4"
-                        >
-                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-800">
-                            <ServiceIcon size={24} />
-                          </span>
-
-                          <span className="text-sm font-bold">
-                            {service}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-slate-500">
-                    No services listed.
+            <div className="flex min-w-0 flex-col">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                    {provider.name}
+                  </h1>
+                  <p className="mt-1 text-base text-slate-600">
+                    {provider.title ||
+                      provider.category ||
+                      "Professional services"}
                   </p>
-                )}
-              </section>
-            )}
-
-            {/* REVIEWS TAB */}
-
-            {activeTab === "reviews" && (
-              <>
-                {/* REVIEW SUMMARY */}
-
-                <section className="rounded-[24px] border border-slate-200/70 bg-white p-5 shadow-sm sm:p-7">
-                  <h2 className="text-xl font-extrabold sm:text-2xl">
-                    Customer Reviews
-                  </h2>
-
-                  <div className="mt-6 grid gap-7 sm:grid-cols-[180px_1fr]">
-                    {/* Average rating */}
-
-                    <div className="flex flex-col items-center justify-center rounded-2xl bg-[#f5f8f5] p-5 text-center">
-                      <p className="text-5xl font-extrabold text-[#153d32]">
-                        {rating}
-                      </p>
-
-                      <div className="mt-3">
-                        <StarRating rating={averageRating} size={19} />
-                      </div>
-
-                      <p className="mt-3 text-xs text-slate-500">
-                        Based on {totalReviews} reviews
-                      </p>
-                    </div>
-
-                    {/* Rating distribution */}
-
-                    <div className="flex flex-col justify-center gap-3">
-                      {ratingCounts.map(({ star, count }) => {
-                        const percentage =
-                          reviews.length > 0
-                            ? (count / reviewTotal) * 100
-                            : 0;
-
-                        return (
-                          <div
-                            key={star}
-                            className="flex items-center gap-3"
-                          >
-                            <span className="flex w-8 items-center gap-1 text-sm font-semibold text-slate-600">
-                              {star}
-                              <Star
-                                size={13}
-                                fill="#fbbf24"
-                                className="text-amber-400"
-                              />
-                            </span>
-
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                              <div
-                                className="h-full rounded-full bg-amber-400 transition-all"
-                                style={{
-                                  width: `${Math.min(100, percentage)}%`,
-                                }}
-                              />
-                            </div>
-
-                            <span className="w-7 text-right text-xs text-slate-500">
-                              {count}
-                            </span>
-                          </div>
-                        );
-                      })}
-
-                      <p className="mt-1 text-xs text-slate-400">
-                        Distribution calculated from the reviews loaded on this page.
-                      </p>
-                    </div>
-                  </div>
-                </section>
-
-                {/* REVIEW LIST */}
-
-                <section className="rounded-[24px] border border-slate-200/70 bg-white p-5 shadow-sm sm:p-7">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-extrabold text-slate-900">
-                        Customer feedback
-                      </h2>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        {reviewTotal} published reviews
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setReviewPage(1);
-                      }}
-                      disabled={reviewsLoading}
-                      aria-label="Refresh reviews"
-                      className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      <RefreshCw
-                        size={17}
-                        className={reviewsLoading ? "animate-spin" : ""}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Loading */}
-
-                  {reviewsLoading ? (
-                    <div className="mt-6 space-y-4">
-                      {[1, 2, 3].map((item) => (
-                        <div
-                          key={item}
-                          className="animate-pulse rounded-2xl border border-slate-100 p-4"
-                        >
-                          <div className="h-4 w-1/3 rounded bg-slate-100" />
-                          <div className="mt-3 h-3 w-1/4 rounded bg-slate-100" />
-                          <div className="mt-4 h-3 w-full rounded bg-slate-100" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : reviewsError ? (
-                    <div className="mt-6 rounded-xl border border-red-100 bg-red-50 p-5 text-center">
-                      <p className="text-sm text-red-600">
-                        {reviewsError}
-                      </p>
-
-                      <button
-                        onClick={() => setReviewPage(1)}
-                        className="mt-3 text-sm font-semibold text-red-700 underline"
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  ) : reviews.length === 0 ? (
-                    <div className="mt-6 rounded-2xl bg-[#f7f9f7] px-5 py-12 text-center">
-                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800">
-                        <MessageCircle size={26} />
-                      </div>
-
-                      <h3 className="mt-4 text-base font-bold text-slate-900">
-                        No reviews yet
-                      </h3>
-
-                      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
-                        Customer reviews will appear here after customers complete their bookings and share their experiences.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-5 divide-y divide-slate-100">
-                      {reviews.map((review) => {
-                        const customerName = getCustomerName(review.customer);
-                        const customerImage = getCustomerImage(review.customer);
-
-                        return (
-                          <article
-                            key={review._id}
-                            className="py-5 first:pt-0 last:pb-0"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex min-w-0 items-center gap-3">
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-50 text-sm font-bold text-emerald-800">
-                                  {customerImage ? (
-                                    <img
-                                      src={customerImage}
-                                      alt={customerName}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  ) : (
-                                    customerName.charAt(0).toUpperCase()
-                                  )}
-                                </div>
-
-                                <div className="min-w-0">
-                                  <h3 className="truncate text-sm font-bold text-slate-900">
-                                    {customerName}
-                                  </h3>
-
-                                  <p className="mt-1 text-xs text-slate-400">
-                                    {formatDate(review.createdAt)}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="shrink-0 rounded-full bg-amber-50 px-3 py-1.5">
-                                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700">
-                                  <Star
-                                    size={13}
-                                    fill="currentColor"
-                                  />
-                                  {review.rating}.0
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="mt-3">
-                              <StarRating rating={review.rating} />
-                            </div>
-
-                            {review.comment ? (
-                              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600">
-                                {review.comment}
-                              </p>
-                            ) : (
-                              <p className="mt-3 text-sm italic text-slate-400">
-                                No written comment.
-                              </p>
-                            )}
-                          </article>
-                        );
-                      })}
-                    </div>
+                  {verified && (
+                    <p className="mt-3 flex items-center gap-2 text-sm font-medium text-emerald-800">
+                      <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                      Verified by Credence
+                    </p>
                   )}
+                </div>
 
-                  {/* PAGINATION */}
+                <div className="flex gap-2">
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    onClick={shareProfile}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:border-emerald-700 hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                  >
+                    {copied ? "Link copied" : "Share"}
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => setFavorite((value) => !value)}
+                    aria-pressed={favorite}
+                    className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+                      favorite
+                        ? "border-emerald-800 bg-emerald-800 text-white"
+                        : "border-slate-300 text-slate-800 hover:border-emerald-700 hover:bg-emerald-50"
+                    }`}
+                  >
+                    {favorite ? "Saved" : "Save"}
+                  </motion.button>
+                </div>
+              </div>
 
-                  {!reviewsLoading &&
-                    reviews.length > 0 &&
-                    reviewPages > 1 && (
-                      <div className="mt-7 flex items-center justify-center gap-4 border-t border-slate-100 pt-5">
-                        <button
-                          disabled={reviewPage <= 1}
-                          onClick={() =>
-                            setReviewPage((current) => current - 1)
-                          }
-                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                          aria-label="Previous reviews"
-                        >
-                          <ChevronLeft size={19} />
-                        </button>
-
-                        <span className="text-sm font-medium text-slate-500">
-                          Page {reviewPage} of {reviewPages}
-                        </span>
-
-                        <button
-                          disabled={reviewPage >= reviewPages}
-                          onClick={() =>
-                            setReviewPage((current) => current + 1)
-                          }
-                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                          aria-label="Next reviews"
-                        >
-                          <ChevronRight size={19} />
-                        </button>
-                      </div>
-                    )}
-                </section>
-              </>
-            )}
-          </div>
-
-          {/* BOOKING PANEL */}
-
-          <aside className="overflow-hidden rounded-[24px] border border-emerald-100 bg-[#e9f6ed] p-3 shadow-sm lg:sticky lg:top-20">
-            <div className="relative overflow-hidden rounded-[20px] bg-gradient-to-br from-[#00633f] to-[#003e2d] px-5 py-7 text-white sm:px-7">
-              <Zap
-                className="absolute -right-1 top-5 text-white/10"
-                size={115}
-                strokeWidth={0.8}
-              />
-
-              <p className="relative text-base font-semibold text-white/90">
-                Service Starting From
-              </p>
-
-              <p className="relative mt-2 text-4xl font-extrabold tracking-tight sm:text-[46px]">
-                {provider.startingPrice != null
-                  ? `₹${provider.startingPrice.toLocaleString("en-IN")}`
-                  : "Contact Us"}
-              </p>
-
-              <button
-                onClick={bookNow}
-                className="relative mt-6 flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl bg-white px-5 py-3 text-base font-extrabold text-emerald-800 shadow-sm hover:bg-emerald-50"
-              >
-                <CalendarDays size={22} />
-                Book Now
-              </button>
+              <dl className="mt-8 grid grid-cols-2 gap-x-10 gap-y-5 sm:grid-cols-[auto_auto_1fr] md:mt-auto md:pt-8">
+                <div>
+                  <dt className="text-sm text-slate-500">Rating</dt>
+                  <dd className="mt-1 flex items-center gap-2 text-lg font-semibold">
+                    <Star
+                      size={17}
+                      aria-hidden="true"
+                      className="fill-amber-400 text-amber-400"
+                    />
+                    {rating}
+                    <span className="text-sm font-normal text-slate-500">
+                      ({totalReviews})
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-slate-500">Experience</dt>
+                  <dd className="mt-1 text-lg font-semibold">{experience}</dd>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <dt className="text-sm text-slate-500">Location</dt>
+                  <dd className="mt-1 text-lg font-semibold">{location}</dd>
+                </div>
+              </dl>
             </div>
+          </motion.header>
 
-            <div className="grid grid-cols-2 gap-3 p-2 pt-4">
+          {/* TABS */}
+
+          <div
+            role="tablist"
+            aria-label="Profile sections"
+            className="mt-8 flex gap-8 overflow-x-auto border-b border-slate-200"
+          >
+            {tabs.map((tab) => (
               <button
-                onClick={messageProvider}
-                disabled={!phone && !provider.email}
-                className="flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-white px-3 text-sm font-bold text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <MessageCircle size={20} />
-                Message
-              </button>
-
-              <a
-                href={phone ? `tel:${phone}` : undefined}
-                aria-disabled={!phone}
-                onClick={(event) => {
-                  if (!phone) event.preventDefault();
-                }}
-                className={`flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-white px-3 text-sm font-bold text-emerald-800 shadow-sm hover:bg-emerald-50 ${
-                  !phone ? "pointer-events-none opacity-50" : ""
+                key={tab.id}
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative shrink-0 py-3 text-base font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+                  activeTab === tab.id
+                    ? "text-emerald-800"
+                    : "text-slate-500 hover:text-slate-900"
                 }`}
               >
-                <Phone size={19} />
-                Call
-              </a>
+                {tab.label}
+                {activeTab === tab.id && (
+                  <motion.span
+                    layoutId="tab-underline"
+                    className="absolute inset-x-0 -bottom-px h-0.5 bg-emerald-700"
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* MAIN CONTENT */}
+
+          <div className="mt-8 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <div>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={activeTab}
+                  role="tabpanel"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: easeOut }}
+                >
+                  {/* OVERVIEW */}
+
+                  {activeTab === "overview" && (
+                    <div className="space-y-12">
+                      <section>
+                        <h2 className="text-2xl font-bold tracking-tight">
+                          About {provider.name}
+                        </h2>
+                        <p className="mt-3 max-w-prose text-base leading-7 text-slate-700">
+                          {provider.description ||
+                            provider.bio ||
+                            "This professional hasn't added a description yet. Contact them to learn more about their work."}
+                        </p>
+
+                        <dl className="mt-6 divide-y divide-slate-200 border-y border-slate-200">
+                          {[
+                            ["Status", verified ? "Verified" : "Listed"],
+                            ["Experience", experience],
+                            ["Reviews", String(totalReviews)],
+                            ["Average rating", rating],
+                          ].map(([label, value]) => (
+                            <div
+                              key={label}
+                              className="flex items-center justify-between py-3.5"
+                            >
+                              <dt className="text-sm text-slate-500">
+                                {label}
+                              </dt>
+                              <dd className="text-base font-semibold">
+                                {value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </section>
+
+                      <section>
+                        <div className="mb-4 flex items-end justify-between gap-3">
+                          <h2 className="text-2xl font-bold tracking-tight">
+                            Services offered
+                          </h2>
+                          {services.length > 4 && (
+                            <button
+                              onClick={() => setActiveTab("services")}
+                              className="text-sm font-semibold text-emerald-800 underline decoration-emerald-300 underline-offset-4 transition hover:decoration-emerald-800"
+                            >
+                              View all services
+                            </button>
+                          )}
+                        </div>
+
+                        {services.length > 0 ? (
+                          <ServiceList services={services.slice(0, 4)} />
+                        ) : (
+                          <p className="text-sm text-slate-500">
+                            No services have been added yet.
+                          </p>
+                        )}
+                      </section>
+                    </div>
+                  )}
+
+                  {/* SERVICES */}
+
+                  {activeTab === "services" && (
+                    <section>
+                      <h2 className="mb-4 text-2xl font-bold tracking-tight">
+                        Services offered
+                      </h2>
+                      {services.length > 0 ? (
+                        <ServiceList services={services} />
+                      ) : (
+                        <p className="text-sm text-slate-500">
+                          No services listed.
+                        </p>
+                      )}
+                    </section>
+                  )}
+
+                  {/* REVIEWS */}
+
+                  {activeTab === "reviews" && (
+                    <div className="space-y-10">
+                      <section>
+                        <h2 className="text-2xl font-bold tracking-tight">
+                          Customer reviews
+                        </h2>
+
+                        <div className="mt-6 grid gap-8 sm:grid-cols-[11rem_1fr] sm:items-center">
+                          <div>
+                            <p className="text-6xl font-bold tracking-tight text-emerald-900">
+                              {rating}
+                            </p>
+                            <div className="mt-3">
+                              <StarRating rating={averageRating} size={18} />
+                            </div>
+                            <p className="mt-2 text-sm text-slate-500">
+                              {totalReviews} reviews
+                            </p>
+                          </div>
+
+                          <div className="space-y-2.5">
+                            {ratingCounts.map(({ star, count }) => {
+                              const percentage =
+                                reviews.length > 0
+                                  ? (count / reviews.length) * 100
+                                  : 0;
+
+                              return (
+                                <div
+                                  key={star}
+                                  className="flex items-center gap-3"
+                                >
+                                  <span className="flex w-10 items-center gap-1 text-sm font-medium text-slate-600">
+                                    {star}
+                                    <Star
+                                      size={12}
+                                      aria-hidden="true"
+                                      className="fill-amber-400 text-amber-400"
+                                    />
+                                  </span>
+                                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                                    <motion.div
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${percentage}%` }}
+                                      transition={{
+                                        duration: 0.8,
+                                        delay: (5 - star) * 0.08,
+                                        ease: easeOut,
+                                      }}
+                                      className="h-full rounded-full bg-emerald-600"
+                                    />
+                                  </div>
+                                  <span className="w-6 text-right text-sm text-slate-500">
+                                    {count}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {reviewPages > 1 && (
+                              <p className="pt-1 text-xs text-slate-400">
+                                Based on the reviews shown on this page.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </section>
+
+                      <section>
+                        <div className="flex items-end justify-between gap-3 border-b border-slate-200 pb-3">
+                          <h3 className="text-lg font-semibold">
+                            {reviewTotal} published{" "}
+                            {reviewTotal === 1 ? "review" : "reviews"}
+                          </h3>
+                          <button
+                            onClick={refreshReviews}
+                            disabled={reviewsLoading}
+                            className="text-sm font-semibold text-emerald-800 underline decoration-emerald-300 underline-offset-4 transition hover:decoration-emerald-800 disabled:opacity-50"
+                          >
+                            {reviewsLoading ? "Refreshing…" : "Refresh"}
+                          </button>
+                        </div>
+
+                        {reviewsLoading ? (
+                          <div className="mt-6 space-y-6">
+                            {[1, 2, 3].map((item) => (
+                              <div key={item} className="animate-pulse">
+                                <div className="h-4 w-1/3 rounded bg-slate-100" />
+                                <div className="mt-3 h-3 w-1/4 rounded bg-slate-100" />
+                                <div className="mt-4 h-3 w-full rounded bg-slate-100" />
+                              </div>
+                            ))}
+                          </div>
+                        ) : reviewsError ? (
+                          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                            {reviewsError}{" "}
+                            <button
+                              onClick={refreshReviews}
+                              className="font-semibold underline"
+                            >
+                              Try again
+                            </button>
+                          </div>
+                        ) : reviews.length === 0 ? (
+                          <div className="py-14 text-center">
+                            <h4 className="text-base font-semibold">
+                              No reviews yet
+                            </h4>
+                            <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+                              Reviews appear here after customers complete a
+                              booking and share their experience.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-slate-200">
+                            {reviews.map((review, index) => {
+                              const customerName = getCustomerName(
+                                review.customer
+                              );
+                              const customerImage = getCustomerImage(
+                                review.customer
+                              );
+
+                              return (
+                                <motion.article
+                                  key={review._id}
+                                  initial={{ opacity: 0, y: 14 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{
+                                    duration: 0.45,
+                                    delay: index * 0.07,
+                                    ease: easeOut,
+                                  }}
+                                  className="py-6"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-100 text-sm font-semibold text-emerald-900">
+                                        {customerImage ? (
+                                          <img
+                                            src={customerImage}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                          />
+                                        ) : (
+                                          customerName.charAt(0).toUpperCase()
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <h4 className="truncate text-sm font-semibold">
+                                          {customerName}
+                                        </h4>
+                                        <p className="text-xs text-slate-500">
+                                          {formatDate(review.createdAt)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <StarRating rating={review.rating} />
+                                  </div>
+
+                                  {review.comment ? (
+                                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                                      {review.comment}
+                                    </p>
+                                  ) : (
+                                    <p className="mt-3 text-sm italic text-slate-400">
+                                      No written comment.
+                                    </p>
+                                  )}
+                                </motion.article>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {!reviewsLoading &&
+                          reviews.length > 0 &&
+                          reviewPages > 1 && (
+                            <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-5">
+                              <button
+                                disabled={reviewPage <= 1}
+                                onClick={() =>
+                                  setReviewPage((current) => current - 1)
+                                }
+                                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold transition-colors hover:border-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Previous
+                              </button>
+                              <span className="text-sm text-slate-500">
+                                Page {reviewPage} of {reviewPages}
+                              </span>
+                              <button
+                                disabled={reviewPage >= reviewPages}
+                                onClick={() =>
+                                  setReviewPage((current) => current + 1)
+                                }
+                                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold transition-colors hover:border-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Next
+                              </button>
+                            </div>
+                          )}
+                      </section>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
             </div>
-          </aside>
+
+            {/* BOOKING PANEL */}
+
+            <motion.aside
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2, ease: easeOut }}
+              className="rounded-xl border border-slate-200 bg-stone-50 p-6 lg:sticky lg:top-20"
+            >
+              <p className="text-sm text-slate-600">Starting from</p>
+              <p className="mt-1 text-4xl font-bold tracking-tight text-slate-900">
+                {price ?? "Contact for price"}
+              </p>
+
+              {provider.isAvailable != null && (
+                <p className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      provider.isAvailable ? "bg-emerald-600" : "bg-slate-400"
+                    }`}
+                  />
+                  {provider.isAvailable
+                    ? "Available for bookings"
+                    : "Not taking bookings right now"}
+                </p>
+              )}
+
+              <motion.button
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={bookNow}
+                className="mt-6 w-full rounded-lg bg-emerald-800 px-5 py-3.5 text-base font-semibold text-white transition-colors hover:bg-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+              >
+                Book now
+              </motion.button>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={messageProvider}
+                  disabled={!phone && !provider.email}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Message
+                </motion.button>
+
+                <motion.a
+                  whileTap={phone ? { scale: 0.97 } : undefined}
+                  href={phone ? `tel:${phone}` : undefined}
+                  aria-disabled={!phone}
+                  onClick={(event) => {
+                    if (!phone) event.preventDefault();
+                  }}
+                  className={`rounded-lg border border-slate-300 bg-white px-3 py-3 text-center text-sm font-semibold text-slate-800 transition-colors hover:border-emerald-700 hover:bg-emerald-50 ${
+                    !phone ? "pointer-events-none opacity-50" : ""
+                  }`}
+                >
+                  Call
+                </motion.a>
+              </div>
+            </motion.aside>
+          </div>
         </div>
-      </div>
-    </main>
+
+        {/* Mobile booking bar */}
+        <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-4 border-t border-slate-200 bg-white px-4 py-3 lg:hidden">
+          <div>
+            <p className="text-xs text-slate-500">Starting from</p>
+            <p className="text-lg font-bold">{price ?? "Contact for price"}</p>
+          </div>
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            onClick={bookNow}
+            className="rounded-lg bg-emerald-800 px-6 py-3 text-sm font-semibold text-white"
+          >
+            Book now
+          </motion.button>
+        </div>
+      </main>
+    </MotionConfig>
   );
 }

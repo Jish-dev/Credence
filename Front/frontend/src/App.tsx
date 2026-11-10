@@ -17,6 +17,10 @@ import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import MyBookings from "./pages/MyBookings";
 import Notifications from "./pages/Notifications";
+import Services from "./pages/Service";
+import AllProf from "./pages/AllPro";
+import ScrollToTop from "./components/ScrollToTop";
+import Terms from "./pages/Terms";
 
 // ========================================
 // LOADING SCREEN
@@ -49,7 +53,7 @@ function AppLayout() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      {/* Navbar */}
+      <ScrollToTop/>
       <Navbar user={user} onLogout={logout} />
 
       {/* Main page content */}
@@ -140,6 +144,9 @@ function AppLayout() {
             path="*"
             element={<Navigate to="/" replace />}
           />
+          <Route path="/service" element={<Services/>}/>
+          <Route path="/professionals" element={<AllProf />} />
+          <Route path="/terms-policy" element={<Terms/>}/>
         </Routes>
       </main>
 
