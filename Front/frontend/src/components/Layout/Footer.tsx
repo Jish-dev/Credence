@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 
 const company = {
   name: "Credence Services",
-  addressLines: ["Kochi, Kerala", "India"],
+  addressLines: ["Malappuram, Kerala", "India"],
   phone: "+91 98765 43210",
   email: "hello@credence.in",
 };

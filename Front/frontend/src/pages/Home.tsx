@@ -6,10 +6,8 @@ import {
   ArrowRight,
   Zap,
   Wrench,
-  Wind,
   Sparkles,
   Paintbrush,
-  Hammer,
   WashingMachine,
   Car,
   Heart,
@@ -58,6 +56,22 @@ type Provider = {
   status?: string;
 };
 
+type LocationResult = {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    county?: string;
+    state?: string;
+    country?: string;
+    [key: string]: string | undefined;
+  };
+};
+
 // ========================================
 // SERVICE CATEGORIES
 // ========================================
@@ -77,10 +91,10 @@ const allServices = [
 
 const testimonials = [
   {
-    name: "Anjali Nair",
+    name: "Navaneeth",
     location: "Calicut",
     rating: 5,
-    initials: "AN",
+    initials: "NV",
     review:
       "Excellent service and professional behaviour. The booking process was simple and convenient.",
   },
@@ -93,10 +107,10 @@ const testimonials = [
       "I could compare different professionals and choose the right one. Very satisfied with the experience.",
   },
   {
-    name: "Sneha K",
-    location: "Nilambur",
+    name: "Saleem P",
+    location: "Kollam",
     rating: 5,
-    initials: "SK",
+    initials: "SP",
     review:
       "The platform is simple and trustworthy. Everything was handled smoothly and on time.",
   },
@@ -245,7 +259,7 @@ const faqCategories = [
 ];
 
 // ========================================
-// STATS (replace with your real numbers)
+// STATS
 // ========================================
 
 const stats = [
@@ -320,8 +334,8 @@ function StatItem({
   const { ref, text } = useCountUp(value, decimals);
 
   return (
-    <div ref={ref} className="px-4 text-center">
-      <p className="text-3xl font-black tracking-tight text-emerald-700 sm:text-5xl">
+    <div ref={ref} className="group px-4 text-center transition-transform duration-300 hover:scale-105">
+      <p className="text-3xl font-black tracking-tight text-emerald-700 sm:text-5xl transition-colors duration-300 group-hover:text-emerald-600">
         {text}
         {suffix}
       </p>
@@ -380,7 +394,6 @@ function normalizeProviderResponse(payload: unknown): Provider[] {
 
   return [];
 }
-
 
 // ========================================
 // ORIN AI CHAT WIDGET
@@ -471,19 +484,19 @@ function OrinWidget() {
       {isOpen && (
         <section
           aria-label="ORIN AI chat"
-          className="flex h-[min(620px,calc(100dvh-140px))] max-h-[calc(100dvh-120px)] min-h-0 w-[min(380px,calc(100vw-32px))] flex-col overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-2xl shadow-slate-900/20"
+          className="flex h-[min(620px,calc(100dvh-140px))] max-h-[calc(100dvh-120px)] min-h-0 w-[min(380px,calc(100vw-32px))] flex-col overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-2xl shadow-slate-900/20 animate-scaleUp"
         >
           {/* Chat header */}
           <div className="relative overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-700 to-green-600 px-5 py-7 text-white">
-            <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+            <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl animate-pulse" />
             <div className="relative flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/20 bg-white">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/20 bg-white shadow-md transition-transform hover:scale-105">
                 <img src="/orin2.png" alt="ORIN robot" className="h-full w-full object-contain" />
               </div>
               <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-black tracking-tight">ORIN AI</h3>
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-emerald-100">
-                  <span className="h-2 w-2 rounded-full bg-green-300" />
+                  <span className="h-2 w-2 rounded-full bg-green-300 animate-ping" />
                   Your Credence Assistant
                 </div>
               </div>
@@ -491,7 +504,7 @@ function OrinWidget() {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 aria-label="Minimize ORIN"
-                className="rounded-full p-2 text-white/80 transition hover:bg-white/15 hover:text-white"
+                className="rounded-full p-2 text-white/80 transition hover:bg-white/15 hover:text-white active:scale-90"
               >
                 <Minus size={19} />
               </button>
@@ -499,7 +512,7 @@ function OrinWidget() {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 aria-label="Close ORIN"
-                className="rounded-full p-2 text-white/80 transition hover:bg-white/15 hover:text-white"
+                className="rounded-full p-2 text-white/80 transition hover:bg-white/15 hover:text-white active:scale-90"
               >
                 <X size={19} />
               </button>
@@ -520,19 +533,21 @@ function OrinWidget() {
             {messages.map((message, index) => (
               <div
                 key={`${index}-${message.role}`}
-                className={`flex items-end gap-2 ${message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                className={`flex items-end gap-2 ${
+                  message.role === "user" ? "justify-end" : "justify-start"
+                }`}
               >
                 {message.role === "assistant" && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-100">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-100 shadow-sm">
                     <img src="/orin.png" alt="" className="h-full w-full object-contain" />
                   </div>
                 )}
                 <div
-                  className={`max-w-[82%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user"
-                    ? "rounded-br-md bg-emerald-700 text-white"
-                    : "rounded-bl-md border border-slate-100 bg-white text-slate-700 shadow-sm"
-                    }`}
+                  className={`max-w-[82%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed transition-all duration-300 ${
+                    message.role === "user"
+                      ? "rounded-br-md bg-emerald-700 text-white shadow-md"
+                      : "rounded-bl-md border border-slate-100 bg-white text-slate-700 shadow-sm"
+                  }`}
                 >
                   {message.content}
                 </div>
@@ -540,9 +555,9 @@ function OrinWidget() {
             ))}
 
             {loading && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 animate-fadeIn">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
-                  <MessageCircle size={15} className="text-emerald-700" />
+                  <MessageCircle size={15} className="text-emerald-700 animate-bounce" />
                 </div>
                 <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-xs text-slate-500 shadow-sm">
                   <Loader2 size={14} className="animate-spin text-emerald-600" />
@@ -566,7 +581,7 @@ function OrinWidget() {
                     type="button"
                     onClick={() => void sendMessage(suggestion)}
                     disabled={loading}
-                    className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
+                    className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100 active:scale-95 disabled:opacity-50"
                   >
                     {suggestion}
                   </button>
@@ -600,7 +615,6 @@ function OrinWidget() {
               <Send size={17} />
             </button>
           </form>
-
         </section>
       )}
 
@@ -610,7 +624,7 @@ function OrinWidget() {
         onClick={() => setIsOpen((current) => !current)}
         aria-label={isOpen ? "Close ORIN assistant" : "Open ORIN assistant"}
         aria-expanded={isOpen}
-        className="group relative flex h-auto w-auto items-center justify-center border-0 bg-transparent p-0 shadow-none transition duration-300 hover:-translate-y-1 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-4"
+        className="group relative flex h-auto w-auto items-center justify-center border-0 bg-transparent p-0 shadow-none transition-all duration-300 hover:-translate-y-2 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-4"
       >
         <span
           aria-hidden="true"
@@ -619,7 +633,7 @@ function OrinWidget() {
         <img
           src="/orin.png"
           alt="Ask ORIN"
-          className="relative z-10 h-28 w-28 object-contain drop-shadow-[0_8px_12px_rgba(15,23,42,0.12)] transition-transform duration-300 group-hover:scale-105 sm:h-28 sm:w-28"
+          className="relative z-10 h-28 w-28 object-contain drop-shadow-[0_8px_16px_rgba(15,23,42,0.2)] transition-transform duration-300 group-hover:scale-110 sm:h-28 sm:w-28"
         />
       </button>
     </div>
@@ -638,15 +652,39 @@ export default function Home() {
   const [providersError, setProvidersError] = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [location, setLocation] = useState("Kochi");
+  const [location, setLocation] = useState("");
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [selectedCoordinates, setSelectedCoordinates] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
   const [likedProviders, setLikedProviders] = useState<string[]>([]);
   const [activeFaqCategory, setActiveFaqCategory] = useState("About us");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  // ========================================
-  // LOAD PROVIDERS
-  // ========================================
+  // Dynamic Scroll Reveal Intersection Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("opacity-100", "translate-y-0");
+            entry.target.classList.remove("opacity-0", "translate-y-8");
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
 
+    const elements = document.querySelectorAll(".reveal-on-scroll");
+    elements.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, [providersLoading]);
+
+  // Load Providers
   useEffect(() => {
     let cancelled = false;
 
@@ -692,15 +730,10 @@ export default function Home() {
     };
   }, []);
 
-  // Show first four providers
   const featuredProviders = useMemo(
     () => providers.slice(0, 4),
     [providers]
   );
-
-  // ========================================
-  // SAVE PROVIDER
-  // ========================================
 
   const toggleLike = (provider: Provider) => {
     const key = getProviderId(provider) || getProviderName(provider);
@@ -712,9 +745,118 @@ export default function Home() {
     );
   };
 
-  // ========================================
-  // SEARCH NAVIGATION
-  // ========================================
+  // Location Autocomplete
+  useEffect(() => {
+    const searchTerm = location.trim();
+
+    if (selectedCoordinates || searchTerm.length < 3) {
+      setLocationResults([]);
+      setLocationLoading(false);
+      setLocationError("");
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const timer = window.setTimeout(async () => {
+      setLocationLoading(true);
+      setLocationError("");
+
+      try {
+        const params = new URLSearchParams({
+          q: searchTerm,
+          limit: "5",
+          lang: "en",
+        });
+
+        const response = await fetch(
+          `https://photon.komoot.io/api/?${params.toString()}`,
+          {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Location search failed (${response.status})`);
+        }
+
+        const data = await response.json();
+        const results: LocationResult[] = (data.features || [])
+          .filter((feature: any) => {
+            const country = feature.properties?.country;
+            return !country || country.toLowerCase() === "india";
+          })
+          .map((feature: any) => {
+            const properties = feature.properties || {};
+            const coordinates = feature.geometry?.coordinates || [];
+            const city =
+              properties.city ||
+              properties.town ||
+              properties.village ||
+              properties.county;
+
+            const displayName = [
+              properties.name,
+              city && city !== properties.name ? city : undefined,
+              properties.state,
+              properties.country,
+            ]
+              .filter(Boolean)
+              .filter((value, index, array) => array.indexOf(value) === index)
+              .join(", ");
+
+            return {
+              place_id: properties.osm_id,
+              display_name: displayName,
+              lat: String(coordinates[1] ?? ""),
+              lon: String(coordinates[0] ?? ""),
+              address: {
+                city: properties.city || properties.town || properties.village,
+                county: properties.county,
+                state: properties.state,
+                country: properties.country,
+              },
+            };
+          })
+          .filter((result: any) => result.display_name && result.lat && result.lon);
+
+        if (!controller.signal.aborted) {
+          setLocationResults(results);
+          setLocationError(
+            results.length === 0
+              ? "No matching locations found. Try another search."
+              : ""
+          );
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error("Location autocomplete error:", error);
+          setLocationError("Unable to search locations right now. Please try again.");
+          setLocationResults([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLocationLoading(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [location, selectedCoordinates]);
+
+  const selectLocation = (result: LocationResult) => {
+    setLocation(result.display_name);
+    setSelectedCoordinates({
+      lat: Number(result.lat),
+      lon: Number(result.lon),
+    });
+    setLocationResults([]);
+    setLocationError("");
+  };
 
   const openProfessionals = (category = "All") => {
     const query = new URLSearchParams();
@@ -727,8 +869,13 @@ export default function Home() {
       query.set("search", searchQuery.trim());
     }
 
-    if (location && location !== "All Kerala") {
-      query.set("location", location);
+    if (location.trim()) {
+      query.set("location", location.trim());
+    }
+
+    if (selectedCoordinates) {
+      query.set("lat", String(selectedCoordinates.lat));
+      query.set("lon", String(selectedCoordinates.lon));
     }
 
     const queryString = query.toString();
@@ -737,10 +884,6 @@ export default function Home() {
       `/professionals${queryString ? `?${queryString}` : ""}`
     );
   };
-
-  // ========================================
-  // PROVIDER NAVIGATION
-  // ========================================
 
   const goToProvider = (provider: Provider) => {
     const id = getProviderId(provider);
@@ -760,12 +903,42 @@ export default function Home() {
     }
   };
 
-  // ========================================
-  // UI
-  // ========================================
-
   return (
-    <main className="min-h-screen bg-white font-sans text-slate-800 selection:bg-emerald-500/20 selection:text-emerald-900">
+    <main className="min-h-screen bg-white font-sans text-slate-800 selection:bg-emerald-500/20 selection:text-emerald-900 overflow-x-hidden">
+
+      {/* Dynamic Keyframe Injection */}
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-8px); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scaleUp {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+        .animate-float { animation: float 6s ease-in-out infinite; }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+        .animate-scaleUp { animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .shimmer-btn { position: relative; overflow: hidden; }
+        .shimmer-btn::after {
+          content: '';
+          position: absolute;
+          top: 0; right: 0; bottom: 0; left: 0;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+          transform: translateX(-100%);
+        }
+        .shimmer-btn:hover::after {
+          animation: shimmer 1.2s infinite;
+        }
+      `}</style>
 
       {/* ========================================
           HERO SECTION
@@ -779,19 +952,22 @@ export default function Home() {
           src="/hero-background.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover object-center"
+          className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover object-center scale-105 transition-transform duration-1000"
         />
 
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-white/10" />
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-white/10 backdrop-blur-[1px]" />
+        
+        {/* Dynamic Glow Circles */}
+        <div className="pointer-events-none absolute left-1/2 top-1/3 -z-10 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/20 blur-3xl animate-pulse" />
 
         <div className="relative z-10 mx-auto max-w-5xl text-center">
 
-          <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 shadow-sm">
-            <BadgeCheck size={15} />
+          <p className=" mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-200/80 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 shadow-sm backdrop-blur-md transition-all duration-300 hover:border-emerald-400 hover:shadow-md">
+            <BadgeCheck size={15} className="text-emerald-600" />
             Kerala's trusted service network
           </p>
 
-          <h1 className="text-4xl font-black tracking-tight text-slate-900 sm:text-6xl lg:text-7xl">
+          <h1 className="text-4xl font-black tracking-tight text-slate-900 sm:text-6xl lg:text-7xl transition-all duration-700">
             Precision services,
             <br />
             <span className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-green-500 bg-clip-text text-transparent">
@@ -811,12 +987,12 @@ export default function Home() {
               event.preventDefault();
               openProfessionals("All");
             }}
-            className="mx-auto mt-10 max-w-3xl rounded-2xl border border-slate-200 bg-white p-2.5 shadow-xl shadow-slate-900/5"
+            className="mx-auto mt-10 max-w-3xl rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-xl shadow-slate-900/5 backdrop-blur-md transition-all duration-300 hover:shadow-2xl hover:border-emerald-300"
           >
             <div className="flex flex-col gap-2 md:flex-row md:items-center">
 
-              <label className="flex flex-1 items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/20">
-                <Search size={18} className="shrink-0 text-emerald-600" />
+              <label className="flex flex-1 items-center gap-3 rounded-xl bg-slate-50/80 px-4 py-3 transition duration-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/20 hover:bg-slate-100/80">
+                <Search size={18} className="shrink-0 text-emerald-600 transition-transform duration-300 group-focus-within:scale-110" />
 
                 <input
                   type="text"
@@ -829,30 +1005,82 @@ export default function Home() {
                 />
               </label>
 
-              <label className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 md:w-52">
+              <div className="relative flex items-center gap-2 rounded-xl bg-slate-50/80 px-4 py-3 md:w-[300px] transition duration-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/20 hover:bg-slate-100/80">
                 <MapPin size={18} className="shrink-0 text-emerald-600" />
 
-                <select
-                  aria-label="Select location"
-                  value={location}
-                  onChange={(event) =>
-                    setLocation(event.target.value)
+                <input
+                  type="text"
+                  aria-label="Search location"
+                  title={
+                    selectedCoordinates
+                      ? `Selected coordinates: ${selectedCoordinates.lat}, ${selectedCoordinates.lon}`
+                      : "Search for a location"
                   }
-                  className="w-full cursor-pointer bg-transparent text-sm text-slate-800 outline-none"
-                >
-                  <option value="Kochi">Kochi</option>
-                  <option value="Malappuram">Malappuram</option>
-                  <option value="Calicut">Calicut</option>
-                  <option value="Manjeri">Manjeri</option>
-                  <option value="All Kerala">All Kerala</option>
-                </select>
-              </label>
+                  placeholder="Search city, town or area..."
+                  value={location}
+                  onChange={(event) => {
+                    setLocation(event.target.value);
+                    setSelectedCoordinates(null);
+                    setLocationError("");
+                  }}
+                  className="min-w-0 w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                />
+
+                {locationLoading && (
+                  <Loader2 size={17} className="shrink-0 animate-spin text-emerald-600" />
+                )}
+
+                {(locationResults.length > 0 || locationError) && (
+                  <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-xl animate-fadeIn">
+                    {locationResults.map((result) => {
+                      const address = result.address || {};
+                      const secondaryAddress = [
+                        address.city || address.town || address.village,
+                        address.state,
+                        address.country,
+                      ].filter(Boolean).join(", ");
+
+                      return (
+                        <button
+                          key={result.place_id}
+                          type="button"
+                          onClick={() => selectLocation(result)}
+                          className="flex w-full items-start gap-3 border-b border-slate-100 px-4 py-3 text-left transition hover:bg-emerald-50 active:bg-emerald-100"
+                        >
+                          <MapPin
+                            size={16}
+                            className="mt-0.5 shrink-0 text-emerald-600"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-slate-800">
+                              {result.display_name.split(",")[0]}
+                            </span>
+                            <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+                              {secondaryAddress || result.display_name}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                    {locationError && (
+                      <p className="px-4 py-3 text-xs text-slate-500">
+                        {locationError}
+                      </p>
+                    )}
+
+                    <p className="border-t border-slate-100 px-4 py-2 text-[10px] text-slate-400">
+                      Location data © OpenStreetMap contributors
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <button
                 type="submit"
-                className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-emerald-500 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-emerald-600/25 transition hover:brightness-110 active:scale-95"
+                className="shimmer-btn flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-700 to-emerald-500 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-emerald-600/25 transition-all duration-300 hover:brightness-110 active:scale-95"
               >
-                <Compass size={16} />
+                <Compass size={16} className="transition-transform duration-500 group-hover:rotate-45" />
                 Explore
               </button>
 
@@ -862,13 +1090,12 @@ export default function Home() {
       </section>
 
       {/* ========================================
-          STATS (animated count-up)
-          Background: White
+          STATS SECTION
       ======================================== */}
 
       <section
         aria-label="Credence in numbers"
-        className="bg-white py-14 sm:py-16"
+        className="reveal-on-scroll opacity-0 translate-y-8 bg-white py-14 transition-all duration-700 ease-out sm:py-16"
       >
         <div className="mx-auto grid max-w-5xl grid-cols-2 gap-y-10 px-6 lg:grid-cols-4 lg:gap-y-0 lg:divide-x lg:divide-slate-200">
           {stats.map((stat) => (
@@ -879,26 +1106,22 @@ export default function Home() {
 
       {/* ========================================
           POPULAR SERVICE CATEGORIES
-          Background: Soft Mint
       ======================================== */}
 
       <section
         id="services"
-        className="bg-[#EAF5EF] py-14"
+        className="reveal-on-scroll opacity-0 translate-y-8 bg-[#EAF5EF] py-14 transition-all duration-700 ease-out"
       >
         <div className="mx-auto max-w-7xl px-4">
 
           <div className="mb-7 flex items-end justify-between gap-4">
-
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
                 Explore our services
               </p>
-
               <h2 className="mt-1 text-2xl font-black text-slate-900 sm:text-3xl">
                 Popular Service Categories
               </h2>
-
               <p className="mt-2 text-sm text-slate-500">
                 Choose from a wide range of trusted services.
               </p>
@@ -907,11 +1130,10 @@ export default function Home() {
             <button
               type="button"
               onClick={() => openProfessionals("All")}
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-emerald-700 transition hover:text-emerald-900"
+              className="group inline-flex shrink-0 items-center gap-1 text-xs font-bold text-emerald-700 transition duration-300 hover:text-emerald-900"
             >
-              View All <ArrowRight size={14} />
+              View All <ArrowRight size={14} className="transition-transform duration-300 group-hover:translate-x-1" />
             </button>
-
           </div>
 
           <div className="-mx-8 flex snap-x snap-mandatory items-stretch gap-2 overflow-x-auto px-0 pb-3 [scrollbar-width:thin] sm:gap-3">
@@ -923,10 +1145,10 @@ export default function Home() {
                   key={category.name}
                   type="button"
                   onClick={() => openProfessionals(category.category)}
-                  className="group w-[112px] shrink-0 snap-start overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5 text-center shadow-sm transition duration-300 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-md sm:w-[185px]"
+                  className="group w-[112px] shrink-0 snap-start overflow-hidden rounded-xl border border-slate-100 bg-white p-1.5 text-center shadow-sm transition-all duration-300 hover:-translate-y-2 hover:border-emerald-300 hover:shadow-lg sm:w-[185px]"
                 >
                   <div className="relative flex h-[100px] items-center justify-center overflow-hidden rounded-lg bg-slate-50">
-                    <Icon size={25} strokeWidth={1.6} className="text-emerald-700" />
+                    <Icon size={25} strokeWidth={1.6} className="text-emerald-700 transition-transform duration-500 " />
                     <img
                       src={category.image}
                       alt={category.name}
@@ -934,10 +1156,10 @@ export default function Home() {
                       onError={(event) => {
                         event.currentTarget.style.display = "none";
                       }}
-                      className="absolute inset-0 h-full w-full object-cover transition duration-500 "
+                      className="absolute inset-0 h-full w-full object-cover "
                     />
                   </div>
-                  <h3 className="mt-1.5 line-clamp-2 min-h-[28px] text-[10px] font-extrabold leading-tight text-slate-800 transition group-hover:text-emerald-700 sm:text-[13px]">
+                  <h3 className="mt-1.5 line-clamp-2 min-h-[28px] text-[10px] font-extrabold leading-tight text-slate-800 transition-colors group-hover:text-emerald-700 sm:text-[13px]">
                     {category.name}
                   </h3>
                 </button>
@@ -947,15 +1169,15 @@ export default function Home() {
             <button
               type="button"
               onClick={() => navigate("/service")}
-              className="group flex w-[112px] shrink-0 snap-start flex-col items-center justify-center rounded-xl border border-emerald-100 bg-white p-2 text-center shadow-sm transition duration-300 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-md sm:w-[122px]"
+              className="group flex w-[112px] shrink-0 snap-start flex-col items-center justify-center rounded-xl border border-emerald-100 bg-white p-2 text-center shadow-sm transition-all duration-300 hover:-translate-y-2 hover:border-emerald-300 hover:shadow-lg sm:w-[122px] active:scale-95"
             >
-              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition group-hover:bg-emerald-100">
-                <ChevronRight size={19} />
+              <span className="mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition-all duration-300 group-hover:bg-emerald-700 group-hover:text-white">
+                <ChevronRight size={19} className="transition-transform duration-300 group-hover:translate-x-0.5" />
               </span>
               <span className="text-[10px] font-extrabold text-slate-800 sm:text-[11px]">
                 More Categories
               </span>
-              <span className="mt-1 text-[9px] text-slate-500">Explore all</span>
+              <span className="mt-1 text-[11px] text-slate-500">Explore all</span>
             </button>
           </div>
         </div>
@@ -963,26 +1185,22 @@ export default function Home() {
 
       {/* ========================================
           FEATURED PROFESSIONALS
-          Background: White
       ======================================== */}
 
       <section
         id="professionals"
-        className="bg-white py-16"
+        className="reveal-on-scroll opacity-0 translate-y-8 bg-white py-16 transition-all duration-700 ease-out"
       >
         <div className="mx-auto max-w-7xl px-6">
 
           <div className="mb-8 flex items-end justify-between gap-4">
-
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
                 Trusted service network
               </p>
-
               <h2 className="mt-1 text-2xl font-black text-slate-900 sm:text-3xl">
                 Featured Professionals Near You
               </h2>
-
               <p className="mt-2 text-sm text-slate-500">
                 Top-rated and verified service providers in your area.
               </p>
@@ -991,15 +1209,13 @@ export default function Home() {
             <button
               type="button"
               onClick={() => navigate("/professionals")}
-              className="flex shrink-0 items-center gap-1 text-xs font-bold text-emerald-700 transition hover:text-emerald-900"
+              className="group flex shrink-0 items-center gap-1 text-xs font-bold text-emerald-700 transition duration-300 hover:text-emerald-900"
             >
-              View All <ArrowRight size={14} />
+              View All <ArrowRight size={14} className="transition-transform duration-300 group-hover:translate-x-1" />
             </button>
-
           </div>
 
           {/* Loading */}
-
           {providersLoading ? (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {[1, 2, 3, 4].map((item) => (
@@ -1012,42 +1228,36 @@ export default function Home() {
 
           ) : providersError ? (
 
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800 animate-fadeIn">
               {providersError}
             </div>
 
           ) : featuredProviders.length === 0 ? (
 
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center">
-
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center animate-fadeIn">
               <BadgeCheck
                 size={36}
-                className="mx-auto text-emerald-600"
+                className="mx-auto text-emerald-600 animate-bounce"
               />
-
               <h3 className="mt-3 font-bold text-slate-900">
                 No professionals to display yet
               </h3>
-
               <p className="mt-1 text-sm text-slate-500">
                 Providers published from the admin panel will appear here.
               </p>
-
               <button
                 type="button"
                 onClick={() => openProfessionals("All")}
-                className="mt-5 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-800"
+                className="mt-5 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 active:scale-95"
               >
                 Browse professionals
               </button>
-
             </div>
 
           ) : (
 
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-
-              {featuredProviders.map((provider) => {
+              {featuredProviders.map((provider, idx) => {
                 const id = getProviderId(provider);
                 const name = getProviderName(provider);
                 const likedKey = id || name;
@@ -1057,13 +1267,12 @@ export default function Home() {
                 return (
                   <article
                     key={likedKey}
-                    className="group overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-emerald-300 hover:shadow-xl"
+                    style={{ animationDelay: `${idx * 100}ms` }}
+                    className="group overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm transition-all duration-300 hover:-translate-y-2 hover:border-emerald-300 hover:shadow-xl animate-fadeIn"
                   >
 
                     {/* Provider image */}
-
                     <div className="relative h-60 overflow-hidden rounded-xl bg-emerald-50">
-
                       <div className="flex h-full items-center justify-center text-emerald-700">
                         <Users size={40} />
                       </div>
@@ -1080,21 +1289,10 @@ export default function Home() {
                         />
                       )}
 
-                      {/* Verification */}
-
-                      <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1.5 text-[10px] font-bold text-emerald-800 shadow-sm">
-                        <BadgeCheck
-                          size={13}
-                          className="text-emerald-600"
-                        />
-
-                        {provider.verificationStatus === "verified"
-                          ? "Verified"
-                          : "Professional"}
-                      </div>
+                      {/* Verification Badge */}
+                      
 
                       {/* Save button */}
-
                       <button
                         type="button"
                         aria-label={
@@ -1103,46 +1301,36 @@ export default function Home() {
                             : "Save provider"
                         }
                         onClick={() => toggleLike(provider)}
-                        className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-rose-500 shadow-sm transition hover:scale-110"
+                        className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-rose-500 shadow-sm transition-all duration-300 hover:scale-110 active:scale-95 backdrop-blur-sm"
                       >
                         <Heart
                           size={16}
-                          className={
+                          className={`transition-colors duration-300 ${
                             likedProviders.includes(likedKey)
                               ? "fill-rose-500 text-rose-500"
-                              : ""
-                          }
+                              : "text-slate-400 hover:text-rose-500"
+                          }`}
                         />
                       </button>
-
                     </div>
 
-                    {/* Provider information */}
-
+                    {/* Provider info */}
                     <div className="px-1 pb-1 pt-4">
-
                       <div className="flex items-start justify-between gap-2">
-
                         <div className="min-w-0">
-
-                          <h3 className="truncate text-base font-extrabold text-slate-900">
+                          <h3 className="truncate text-base font-extrabold text-slate-900 transition-colors group-hover:text-emerald-700">
                             {name}
                           </h3>
-
                           <p className="mt-1 truncate text-sm font-medium text-emerald-700">
                             {getProviderCategory(provider)}
                           </p>
-
                         </div>
-
-                        {/* Rating + review count in brackets */}
 
                         <div className="flex shrink-0 items-center gap-1 text-xs font-bold text-amber-500">
                           <Star
                             size={14}
                             className="fill-amber-400 text-amber-400"
                           />
-
                           {provider.averageRating
                             ? provider.averageRating.toFixed(1)
                             : "New"}
@@ -1153,7 +1341,6 @@ export default function Home() {
                             </span>
                           ) : null}
                         </div>
-
                       </div>
 
                       <p className="mt-3 flex items-center gap-1.5 truncate text-xs text-slate-500">
@@ -1161,32 +1348,24 @@ export default function Home() {
                           size={14}
                           className="shrink-0 text-emerald-600"
                         />
-
                         {getProviderLocation(provider)}
                       </p>
 
-                      {/* Starting price */}
-
                       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-
                         <span className="text-xs font-medium text-slate-500">
                           Starting from
                         </span>
-
                         <span className="text-2xl font-black text-slate-900">
                           {price != null ? `₹${price}` : "Quote"}
                         </span>
-
                       </div>
 
-                      {/* View and Book buttons */}
-
+                      {/* View & Book Buttons */}
                       <div className="mt-4 grid grid-cols-2 gap-2">
-
                         <button
                           type="button"
                           onClick={() => goToProvider(provider)}
-                          className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2 py-2 text-sm font-bold text-emerald-800 transition hover:bg-emerald-50"
+                          className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2 py-2 text-sm font-bold text-emerald-800 transition-all duration-200 hover:bg-emerald-50 active:scale-95"
                         >
                           <Eye size={17} />
                           View
@@ -1195,46 +1374,39 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => bookProvider(provider)}
-                          className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-2 py-2 text-sm font-bold text-white transition hover:bg-emerald-800"
+                          className="shimmer-btn flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-2 py-2 text-sm font-bold text-white transition-all duration-200 hover:bg-emerald-800 active:scale-95 shadow-sm"
                         >
                           <CalendarCheck size={17} />
                           Book
                         </button>
-
                       </div>
-
                     </div>
                   </article>
                 );
               })}
-
             </div>
           )}
-
         </div>
       </section>
 
       {/* ========================================
-          MOBILE APP
-          Background: White
-          Existing banner retained
+          MOBILE APP BANNER
       ======================================== */}
 
       <section
         id="app"
-        className="bg-white py-12"
+        className="reveal-on-scroll opacity-0 translate-y-8 bg-white py-12 transition-all duration-700 ease-out"
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-
           <a
             href="mailto:hello@credence.in?subject=Credence%20app%20launch%20updates"
             aria-label="Get Credence app launch updates"
-            className="group block overflow-hidden rounded-2xl bg-slate-950 shadow-xl transition hover:shadow-2xl focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/40"
+            className="group block overflow-hidden rounded-2xl bg-slate-950 shadow-xl transition-all duration-500 hover:shadow-2xl hover:scale-[1.01] focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/40"
           >
             <img
               src="/credence-app-banner.png"
               alt="Get the Credence app. Book trusted home services anytime, anywhere."
-              className="block h-auto w-full object-cover transition duration-500 group-hover:brightness-105"
+              className="block h-auto w-full object-cover transition duration-700 group-hover:scale-105"
               loading="lazy"
             />
           </a>
@@ -1242,30 +1414,23 @@ export default function Home() {
           <p className="mt-3 text-center text-xs text-slate-500">
             App download links and QR code should be connected before launch.
           </p>
-
         </div>
       </section>
 
       {/* ========================================
-          NEED HELP / EMERGENCY
-          Background: White
-          Existing red design retained
+          EMERGENCY ASSISTANCE
       ======================================== */}
 
       <section
         id="pulse"
-        className="bg-white py-12"
+        className="reveal-on-scroll opacity-0 translate-y-8 bg-white py-12 transition-all duration-700 ease-out"
       >
         <div className="mx-auto max-w-7xl px-6">
-
-          <div className="relative overflow-hidden rounded-3xl border border-red-500/20 bg-gradient-to-r from-red-50 via-red-50/70 to-red-50 p-8 shadow-sm">
-
-            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-red-500/10 blur-3xl" />
+          <div className="relative overflow-hidden rounded-3xl border border-red-500/20 bg-gradient-to-r from-red-50 via-red-50/70 to-red-50 p-8 shadow-sm transition-all duration-500 hover:shadow-md">
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-red-500/10 blur-3xl animate-pulse" />
 
             <div className="relative z-10 grid gap-6 md:grid-cols-[1.5fr_1fr] md:items-center">
-
               <div>
-
                 <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-100 px-3 py-1.5 text-[10px] font-bold text-red-800">
                   <span className="h-2 w-2 animate-ping rounded-full bg-red-600" />
                   Emergency assistance
@@ -1278,7 +1443,6 @@ export default function Home() {
                 <p className="mt-2 text-sm leading-relaxed text-slate-600">
                   Describe your issue and explore professionals who can help.
                 </p>
-
               </div>
 
               <form
@@ -1288,14 +1452,6 @@ export default function Home() {
                 }}
                 className="flex flex-col gap-3 sm:flex-row md:justify-end"
               >
-
-                <label
-                  className="sr-only"
-                  htmlFor="emergency-search"
-                >
-                  Describe your issue
-                </label>
-
                 <input
                   id="emergency-search"
                   type="text"
@@ -1304,19 +1460,17 @@ export default function Home() {
                     setSearchQuery(event.target.value)
                   }
                   placeholder="Describe your issue..."
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-red-500"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-800 outline-none transition duration-200 placeholder:text-slate-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
                 />
 
                 <button
                   type="submit"
-                  className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition hover:bg-red-500"
+                  className="shimmer-btn flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all duration-200 hover:bg-red-500 active:scale-95"
                 >
                   Find Help
                   <ArrowRight size={15} />
                 </button>
-
               </form>
-
             </div>
           </div>
         </div>
@@ -1324,18 +1478,14 @@ export default function Home() {
 
       {/* ========================================
           CUSTOMER TESTIMONIALS
-          Background: Soft Mint
       ======================================== */}
 
       <section
-        className="border-y border-gray-100 bg-[#e8e8e8] py-16"
+        className="reveal-on-scroll opacity-0 translate-y-8 border-y border-gray-100 bg-[#e8e8e8] py-16 transition-all duration-700 ease-out"
       >
         <div className="mx-auto max-w-7xl px-6">
-
           <div className="mb-9 flex items-end justify-between gap-4">
-
             <div>
-
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
                 Customer experiences
               </p>
@@ -1347,61 +1497,41 @@ export default function Home() {
               <p className="mt-2 text-sm text-slate-500">
                 Real experiences from people who trust Credence.
               </p>
-
             </div>
 
             <div className="hidden items-center gap-2 sm:flex">
-
               <button
                 type="button"
                 aria-label="Previous testimonials"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-100 bg-white text-slate-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-100 bg-white text-slate-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700 "
               >
-                <ChevronRight
-                  size={18}
-                  className="rotate-180"
-                />
+                <ChevronRight size={18} className="rotate-180" />
               </button>
 
               <button
                 type="button"
                 aria-label="Next testimonials"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-100 bg-white text-slate-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-100 bg-white text-slate-600 shadow-sm transition hover:border-emerald-300 hover:text-emerald-700 active:scale-90"
               >
                 <ChevronRight size={18} />
               </button>
-
             </div>
-
           </div>
 
           <div className="grid gap-5 md:grid-cols-3">
-
-            {testimonials.map((testimonial) => (
+            {testimonials.map((testimonial, i) => (
               <article
                 key={testimonial.name}
-                className="rounded-2xl border border-white bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg"
+                className="rounded-2xl border border-white bg-white p-6 shadow-sm transition-all duration-300 "
               >
-
                 <div className="flex items-center justify-between">
-
                   <div className="flex gap-1 text-amber-400">
-                    {Array.from({
-                      length: testimonial.rating,
-                    }).map((_, i) => (
-                      <Star
-                        key={i}
-                        size={16}
-                        className="fill-amber-400"
-                      />
+                    {Array.from({ length: testimonial.rating }).map((_, idx) => (
+                      <Star key={idx} size={16} className="fill-amber-400" />
                     ))}
                   </div>
 
-                  <Quote
-                    size={25}
-                    className="text-emerald-100"
-                  />
-
+                  <Quote size={25} className="text-emerald-100" />
                 </div>
 
                 <p className="mt-5 min-h-[80px] text-sm leading-relaxed text-slate-600">
@@ -1409,50 +1539,36 @@ export default function Home() {
                 </p>
 
                 <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-4">
-
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-800">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-800 transition-transform duration-300">
                     {testimonial.initials}
                   </div>
 
                   <div>
-
-                    <h3 className="text-sm font-extrabold text-slate-900">
+                    <h3 className="text-base font-extrabold text-slate-900">
                       {testimonial.name}
                     </h3>
-
                     <p className="mt-1 text-xs text-slate-500">
                       {testimonial.location}
                     </p>
-
                   </div>
-
                 </div>
-
               </article>
             ))}
-
           </div>
         </div>
       </section>
 
       {/* ========================================
-          FOR PROFESSIONALS / FOR CUSTOMERS CTA
-          Background: White
+          CTA SECTION
       ======================================== */}
 
-
-      {/* CREDENCE PROFESSIONAL & CUSTOMER CTA */}
-
-      <section className="relative overflow-hidden bg-[#e8e8e8] px-5 pb-16 pt-14 sm:px-8 sm:pb-20">
-
-        {/* Curved white background */}
+      <section className="reveal-on-scroll opacity-0 translate-y-8 relative overflow-hidden bg-[#e8e8e8] px-5 pb-16 pt-14 transition-all duration-700 ease-out sm:px-8 sm:pb-20">
         <div className="absolute bottom-0 left-[-10%] h-[75%] w-[120%] rounded-[50%_50%_0_0] bg-white" />
 
         <div className="relative mx-auto grid max-w-5xl items-stretch md:grid-cols-2">
 
           {/* PROFESSIONAL CARD */}
-          <div className="relative z-10 flex min-h-[330px] flex-col items-start justify-center rounded-[36px] border border-slate-300 bg-gradient-to-br from-white to-[#e8e8e8] px-8 pb-10 pt-14 shadow-[0_15px_35px_rgba(0,0,0,0.13)] sm:px-11">
-
+          <div className="group relative z-10 flex min-h-[330px] flex-col items-start justify-center rounded-[36px] border border-slate-300 bg-gradient-to-br from-white to-[#e8e8e8] px-8 pb-10 pt-14 shadow-[0_15px_35px_rgba(0,0,0,0.13)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_20px_45px_rgba(0,0,0,0.18)] sm:px-11">
             <span className="absolute left-10 top-0 -translate-y-px -skew-x-12 rounded-b-lg bg-black px-5 py-2 text-xs font-bold uppercase tracking-wide text-white">
               <span className="block skew-x-12">For Professionals</span>
             </span>
@@ -1466,17 +1582,16 @@ export default function Home() {
             </p>
 
             <a
-              href="mailto:hello@credence.in?subject=Professional%20Partnership"
-              className="mt-7 inline-flex items-center gap-3 rounded-2xl bg-white px-6 py-4 text-base font-bold text-black transition hover:bg-emerald-50"
+              href="https://credence-provider.vercel.app"
+              className="mt-7 inline-flex items-center gap-3 rounded-2xl bg-white px-6 py-4 text-base font-bold text-black transition-all duration-300 hover:bg-emerald-50 hover:shadow-md active:scale-95"
             >
               Partner with us
-              <ArrowRight size={21} />
+              <ArrowRight size={21} className="transition-transform duration-300 group-hover:translate-x-1" />
             </a>
           </div>
 
           {/* CUSTOMER CARD */}
-          <div className="relative z-20 -mt-0 flex min-h-[330px] flex-col items-start justify-center rounded-[36px] border border-emerald-800 bg-[#0D6847] px-8 pb-10 pt-14 text-white shadow-[0_15px_35px_rgba(0,0,0,0.16)] md:-ml-6 sm:px-11">
-
+          <div className="group relative z-20 -mt-0 flex min-h-[330px] flex-col items-start justify-center rounded-[36px] border border-emerald-800 bg-[#0D6847] px-8 pb-10 pt-14 text-white shadow-[0_15px_35px_rgba(0,0,0,0.16)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_25px_50px_rgba(13,104,71,0.3)] md:-ml-6 sm:px-11">
             <span className="absolute left-10 top-0 -translate-y-px -skew-x-12 rounded-b-lg bg-black px-5 py-2 text-xs font-bold uppercase tracking-wide text-white">
               <span className="block skew-x-12">For Customers</span>
             </span>
@@ -1492,23 +1607,21 @@ export default function Home() {
             <button
               type="button"
               onClick={() => navigate("/professionals")}
-              className="mt-7 inline-flex items-center gap-3 rounded-2xl bg-white px-6 py-4 text-base font-bold text-black transition hover:bg-emerald-50"
+              className="mt-7 inline-flex items-center gap-3 rounded-2xl bg-white px-6 py-4 text-base font-bold text-black transition-all duration-300 hover:bg-emerald-50 hover:shadow-md active:scale-95"
             >
               Explore professionals
-              <ArrowRight size={21} />
+              <ArrowRight size={21} className="transition-transform duration-300 group-hover:translate-x-1" />
             </button>
           </div>
 
         </div>
       </section>
 
-
       {/* ========================================
           FREQUENTLY ASKED QUESTIONS
-          Placed after the CTA cards
       ======================================== */}
 
-      <section id="faq" className="bg-white px-5 py-16 sm:px-8 sm:py-20">
+      <section id="faq" className="reveal-on-scroll opacity-0 translate-y-8 bg-white px-5 py-16 transition-all duration-700 ease-out sm:px-8 sm:py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mb-10 text-center">
             <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
@@ -1516,7 +1629,7 @@ export default function Home() {
             </h2>
           </div>
 
-          {/* FAQ category tabs */}
+          {/* FAQ Category Tabs */}
           <div className="mb-10 flex flex-wrap items-center justify-center gap-3">
             {faqCategories.map((category) => {
               const isActive = activeFaqCategory === category.label;
@@ -1530,9 +1643,9 @@ export default function Home() {
                     setOpenFaq(null);
                   }}
                   aria-pressed={isActive}
-                  className={`rounded-2xl border px-5 py-3.5 text-sm font-semibold transition duration-200 sm:px-6 sm:text-base ${
+                  className={`rounded-2xl border px-5 py-3.5 text-sm font-semibold transition-all duration-300 sm:px-6 sm:text-base active:scale-95 ${
                     isActive
-                      ? "border-emerald-700 bg-emerald-50 text-emerald-900 shadow-sm"
+                      ? "border-emerald-700 bg-emerald-50 text-emerald-900 shadow-sm scale-105"
                       : "border-slate-200 bg-white text-slate-900 shadow-sm hover:border-emerald-300 hover:bg-emerald-50/50"
                   }`}
                 >
@@ -1542,7 +1655,7 @@ export default function Home() {
             })}
           </div>
 
-          {/* FAQ accordion list */}
+          {/* FAQ Accordion */}
           <div className="space-y-5">
             {faqCategories
               .find((category) => category.label === activeFaqCategory)
@@ -1552,7 +1665,7 @@ export default function Home() {
                 return (
                   <article
                     key={faq.question}
-                    className={`overflow-hidden rounded-[24px] border bg-white transition duration-300 ${
+                    className={`overflow-hidden rounded-[20px] border bg-white transition-all duration-300 ${
                       isOpen
                         ? "border-emerald-200 shadow-md shadow-slate-900/[0.04]"
                         : "border-slate-100 shadow-[0_5px_24px_rgba(15,23,42,0.035)] hover:border-emerald-200"
@@ -1574,7 +1687,7 @@ export default function Home() {
                         size={21}
                         strokeWidth={1.8}
                         className={`shrink-0 text-slate-800 transition-transform duration-300 ${
-                          isOpen ? "rotate-180" : ""
+                          isOpen ? "rotate-180 text-emerald-600" : ""
                         }`}
                       />
                     </button>
@@ -1582,7 +1695,7 @@ export default function Home() {
                     {isOpen && (
                       <div
                         id={`faq-answer-${activeFaqCategory}-${index}`}
-                        className="border-t border-slate-100 px-6 pb-6 pt-4 sm:px-8"
+                        className="border-t border-slate-100 px-6 pb-6 pt-4 sm:px-8 animate-fadeIn"
                       >
                         <p className="max-w-4xl text-sm leading-7 text-slate-600 sm:text-base">
                           {faq.answer}
@@ -1596,11 +1709,9 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PAGE BOTTOM SPACING */}
-
       <div className="h-10 bg-white" />
 
-      {/* ORIN AI FLOATING ASSISTANT */}
+      {/* Floating AI Assistant Widget */}
       <OrinWidget />
 
     </main>
