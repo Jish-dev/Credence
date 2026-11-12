@@ -146,6 +146,12 @@ export default function Booking() {
     null
   );
 
+  // Keep the captured Razorpay response so verification can be retried
+  // without creating another order or charging the customer again.
+  const [pendingPaymentResponse, setPendingPaymentResponse] =
+    useState<RazorpayPaymentResponse | null>(null);
+  const [paymentCaptured, setPaymentCaptured] = useState(false);
+
   const [form, setForm] = useState<BookingForm>({
     serviceName: "",
     bookingDate: "",
@@ -240,21 +246,61 @@ export default function Booking() {
   const verifyPayment = async (
     paymentResponse: RazorpayPaymentResponse
   ) => {
-    try {
-      await api.post("/payments/verify-payment", {
-        razorpay_order_id: paymentResponse.razorpay_order_id,
-        razorpay_payment_id: paymentResponse.razorpay_payment_id,
-        razorpay_signature: paymentResponse.razorpay_signature,
-      });
+    // A successful Razorpay checkout callback means the customer has
+    // completed the payment flow. Do not create another payment order
+    // while this payment is waiting for backend verification.
+    setPendingPaymentResponse(paymentResponse);
+    setPaymentCaptured(true);
 
+    try {
+      console.log("RAZORPAY CALLBACK RECEIVED:", paymentResponse);
+      console.log("CALLING BACKEND PAYMENT VERIFICATION...");
+
+      if (
+        !paymentResponse?.razorpay_order_id ||
+        !paymentResponse?.razorpay_payment_id ||
+        !paymentResponse?.razorpay_signature
+      ) {
+        throw new Error("Razorpay returned incomplete payment details.");
+      }
+
+      const response = await api.post(
+        "/payments/verify-payment",
+        {
+          razorpay_order_id: paymentResponse.razorpay_order_id,
+          razorpay_payment_id: paymentResponse.razorpay_payment_id,
+          razorpay_signature: paymentResponse.razorpay_signature,
+        }
+      );
+
+      console.log("BACKEND VERIFICATION RESPONSE:", response.data);
+
+      if (response.data?.success === false) {
+        throw new Error(
+          response.data?.message || "The backend could not verify this payment."
+        );
+      }
+
+      setPendingPaymentResponse(null);
+      setPaymentCaptured(false);
+      setError("");
       setSuccess(
         "Your payment has been verified successfully. You can now track your booking."
       );
-    } catch (err) {
-      console.error("PAYMENT VERIFICATION ERROR:", err);
+    } catch (err: any) {
+      const backendError =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Unknown verification error";
+
+      console.error(
+        "PAYMENT VERIFICATION ERROR:",
+        err?.response?.data || err
+      );
 
       setError(
-        "Payment was submitted, but verification is pending. Please check My Bookings before attempting another payment."
+        `Razorpay has returned the payment response, but Credence could not verify it yet. Do not pay again. Use “Retry Verification” below. Details: ${backendError}`
       );
     } finally {
       setSubmitting(false);
@@ -540,7 +586,9 @@ export default function Booking() {
 
             {createdBookingId && (
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Your booking is saved. Complete the payment or retry it below.
+                {paymentCaptured
+                  ? "Your payment response has been received and is awaiting verification. Do not make another payment."
+                  : "Your booking is saved. Complete the payment or retry it below."}
               </div>
             )}
 
@@ -699,19 +747,34 @@ export default function Booking() {
 
               {/* PAYMENT BUTTON */}
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <CreditCard size={18} />
-
-                {submitting
-                  ? "Processing..."
-                  : createdBookingId
-                    ? "Retry Payment"
-                    : "Continue to Payment"}
-              </button>
+              {paymentCaptured && pendingPaymentResponse ? (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={async () => {
+                    setError("");
+                    setSubmitting(true);
+                    await verifyPayment(pendingPaymentResponse);
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <CreditCard size={18} />
+                  {submitting ? "Verifying..." : "Retry Verification"}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <CreditCard size={18} />
+                  {submitting
+                    ? "Processing..."
+                    : createdBookingId
+                      ? "Retry Payment"
+                      : "Continue to Payment"}
+                </button>
+              )}
 
               <p className="text-center text-xs text-slate-400">
                 Secure payment powered by Razorpay.

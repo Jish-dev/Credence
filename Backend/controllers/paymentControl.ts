@@ -134,9 +134,13 @@ export const verifyPayment = async (
   res: Response,
   next: NextFunction
 ) => {
-  const session = await mongoose.startSession();
+  let session: mongoose.ClientSession | undefined;
+  let currentStep = "initialization";
 
   try {
+    currentStep = "starting MongoDB session";
+    session = await mongoose.startSession();
+
     const customerId = req.user?.id;
 
     const {
@@ -166,11 +170,15 @@ export const verifyPayment = async (
       });
     }
 
+    currentStep = "checking Razorpay secret";
+
     const secret = process.env.RAZORPAY_KEY_SECRET;
 
     if (!secret) {
-      throw new Error("Razorpay secret is not configured");
+      throw new Error("RAZORPAY_KEY_SECRET is not configured");
     }
+
+    currentStep = "finding payment record";
 
     const paymentRecord = await Payment.findOne({
       razorpayOrderId: razorpay_order_id,
@@ -183,6 +191,9 @@ export const verifyPayment = async (
         message: "Payment record not found",
       });
     }
+
+    // Verify Razorpay signature.
+    currentStep = "verifying Razorpay signature";
 
     const generatedSignature = crypto
       .createHmac("sha256", secret)
@@ -202,6 +213,9 @@ export const verifyPayment = async (
       });
     }
 
+    // Fetch the actual payment from Razorpay.
+    currentStep = "fetching payment from Razorpay";
+
     const razorpayPayment = await razorpay.payments.fetch(
       razorpay_payment_id
     );
@@ -212,45 +226,81 @@ export const verifyPayment = async (
       razorpayPayment.amount !== paymentRecord.amount ||
       razorpayPayment.currency !== paymentRecord.currency
     ) {
+      console.error("RAZORPAY PAYMENT MISMATCH:", {
+        orderMatches:
+          razorpayPayment.order_id === razorpay_order_id,
+        status: razorpayPayment.status,
+        razorpayAmount: razorpayPayment.amount,
+        databaseAmount: paymentRecord.amount,
+        razorpayCurrency: razorpayPayment.currency,
+        databaseCurrency: paymentRecord.currency,
+      });
+
       return res.status(400).json({
         success: false,
         message: "Payment details could not be verified",
       });
     }
 
+    // Update Payment and Booking atomically.
+    currentStep = "starting MongoDB payment transaction";
+
     let alreadyProcessed = false;
 
     await session.withTransaction(async () => {
+      currentStep = "checking payment inside transaction";
+
       const payment = await Payment.findOne({
         _id: paymentRecord._id,
         customer: customerId,
-      }).session(session);
+      }).session(session!);
 
       if (!payment) {
-        throw new Error("Payment record not found");
+        throw new Error("Payment record not found inside transaction");
       }
 
-      // A webhook may have confirmed this payment first.
+      // Idempotency: do not process the same captured payment twice.
       if (
         payment.status === "paid" &&
         payment.razorpayPaymentId === razorpay_payment_id
       ) {
+        const existingBooking = await Booking.findById(
+          payment.booking
+        ).session(session!);
+
+        if (
+          !existingBooking ||
+          existingBooking.paymentStatus !== "paid"
+        ) {
+          throw new Error(
+            "Payment is marked paid, but booking payment status is inconsistent"
+          );
+        }
+
         alreadyProcessed = true;
         return;
       }
 
       if (payment.status !== "created") {
-        throw new Error("This payment cannot be processed");
+        throw new Error(
+          `Payment cannot be processed. Current status: ${payment.status}`
+        );
       }
+
+      currentStep = "checking duplicate Razorpay payment";
 
       const duplicatePayment = await Payment.findOne({
         razorpayPaymentId: razorpay_payment_id,
         _id: { $ne: payment._id },
-      }).session(session);
+      }).session(session!);
 
       if (duplicatePayment) {
-        throw new Error("This transaction is already linked");
+        throw new Error(
+          "This Razorpay payment ID is already linked to another payment"
+        );
       }
+
+      currentStep = "updating booking";
 
       const booking = await Booking.findOneAndUpdate(
         {
@@ -267,19 +317,22 @@ export const verifyPayment = async (
             paymentStatus: "paid",
             paymentId: payment._id,
             paidAt: new Date(),
+            status: "confirmed",
           },
         },
         {
           new: true,
-          session,
+          session: session!,
         }
       );
 
       if (!booking) {
         throw new Error(
-          "Booking is already paid or is not eligible for payment"
+          "Booking was not found or is not eligible for this payment"
         );
       }
+
+      currentStep = "updating payment record";
 
       payment.razorpayPaymentId = razorpay_payment_id;
       payment.razorpaySignature = razorpay_signature;
@@ -287,7 +340,16 @@ export const verifyPayment = async (
       payment.signatureVerified = true;
       payment.method = razorpayPayment.method || "";
 
-      await payment.save({ session });
+      await payment.save({ session: session! });
+
+      currentStep = "payment transaction completed";
+    });
+
+    console.log("CREDENCE PAYMENT VERIFIED:", {
+      orderId: razorpay_order_id,
+      paymentId: razorpay_payment_id,
+      bookingId: paymentRecord.booking.toString(),
+      alreadyProcessed,
     });
 
     return res.status(200).json({
@@ -305,9 +367,23 @@ export const verifyPayment = async (
       },
     });
   } catch (error) {
+    console.error("======================================");
+    console.error("CREDENCE PAYMENT VERIFICATION FAILED");
+    console.error("Failed at:", currentStep);
+    console.error("Error:", error);
+    console.error(
+      "Stack:",
+      error instanceof Error ? error.stack : "No stack available"
+    );
+    console.error("======================================");
+
     next(error);
   } finally {
-    await session.endSession();
+    if (session) {
+      await session.endSession().catch((sessionError) => {
+        console.error("MongoDB session cleanup failed:", sessionError);
+      });
+    }
   }
 };
 
@@ -491,6 +567,7 @@ export const handleRazorpayWebhook = async (
         booking.paymentStatus = "paid";
         booking.paymentId = payment._id;
         booking.paidAt = new Date();
+        booking.status = "confirmed";
 
         await booking.save({ session });
 
