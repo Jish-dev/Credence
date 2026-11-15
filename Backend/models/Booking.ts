@@ -16,6 +16,18 @@ export type BookingPaymentStatus =
   | "failed"
   | "refunded";
 
+export type ProviderTravelStatus =
+  | "idle"
+  | "on-the-way"
+  | "arrived"
+  | "stopped";
+
+export interface IProviderLocation {
+  latitude: number;
+  longitude: number;
+  updatedAt: Date;
+}
+
 export interface IBooking {
   customer: mongoose.Types.ObjectId;
   provider: mongoose.Types.ObjectId;
@@ -43,6 +55,13 @@ export interface IBooking {
   paidAt: Date | null;
 
   providerNote: string;
+
+  providerTravelStatus: ProviderTravelStatus;
+
+  providerLocation: IProviderLocation | null;
+
+  trackingStartedAt: Date | null;
+  trackingEndedAt: Date | null;
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -164,6 +183,40 @@ const bookingSchema = new Schema<IBooking>(
       trim: true,
       default: "",
       maxlength: 1000,
+    },
+
+    providerTravelStatus: {
+      type: String,
+      enum: ["idle", "on-the-way", "arrived", "stopped"],
+      default: "idle",
+      index: true,
+    },
+
+    providerLocation: {
+      latitude: {
+        type: Number,
+        min: -90,
+        max: 90,
+      },
+      longitude: {
+        type: Number,
+        min: -180,
+        max: 180,
+      },
+      updatedAt: {
+        type: Date,
+      },
+      _id: false,
+    },
+
+    trackingStartedAt: {
+      type: Date,
+      default: null,
+    },
+
+    trackingEndedAt: {
+      type: Date,
+      default: null,
     },
 
     home: {

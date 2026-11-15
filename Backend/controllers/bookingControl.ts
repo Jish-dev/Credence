@@ -2,7 +2,7 @@
 import type { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import { z } from "zod";
-
+import { getIO } from "../config/socket.js";
 import Booking from "../models/Booking.js";
 import Provider from "../models/Provider.js";
 import User from "../models/User.js";
@@ -20,7 +20,6 @@ const createBookingValidation = z
       "Invalid provider ID"
     ),
 
-    // Optional: connect this booking to a customer's home
     homeId: z
       .string()
       .refine(
@@ -74,6 +73,11 @@ const providerStatusValidation = z.object({
   providerNote: z.string().trim().max(1000).optional(),
 });
 
+const providerLocationValidation = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+});
+
 // ========================================
 // HELPERS
 // ========================================
@@ -117,6 +121,25 @@ const createBookingNotification = async (
   } catch (error) {
     console.error("Booking notification creation failed:", error);
   }
+};
+
+// ========================================
+// SOCKET: SEND TRACKING STATUS
+// ========================================
+
+const emitTrackingUpdate = (
+  customerId: mongoose.Types.ObjectId,
+  bookingId: mongoose.Types.ObjectId,
+  travelStatus: string,
+  location: unknown = null
+) => {
+  getIO()
+    .to(`user:${customerId.toString()}`)
+    .emit("provider:tracking:update", {
+      bookingId: bookingId.toString(),
+      travelStatus,
+      location,
+    });
 };
 
 // ========================================
@@ -250,16 +273,12 @@ export const createBooking = async (
       });
     }
 
-    // ====================================
-    // VALIDATE SELECTED HOME
-    // ====================================
-
     const selectedHome = data.homeId
       ? await Home.findOne({
-          _id: data.homeId,
-          owner: customer._id,
-          isActive: true,
-        })
+        _id: data.homeId,
+        owner: customer._id,
+        isActive: true,
+      })
       : null;
 
     if (data.homeId && !selectedHome) {
@@ -268,10 +287,6 @@ export const createBooking = async (
         message: "Selected home not found or passport is inactive",
       });
     }
-
-    // ====================================
-    // VALIDATE PRE-BOOKING DATE AND TIME
-    // ====================================
 
     if (data.bookingType === "pre_booking") {
       const bookingTimeValidation = validateAdvanceBookingTime(
@@ -286,10 +301,6 @@ export const createBooking = async (
         });
       }
     }
-
-    // ====================================
-    // FIND AVAILABLE PROVIDER
-    // ====================================
 
     const provider = await Provider.findOne({
       _id: data.providerId,
@@ -307,45 +318,27 @@ export const createBooking = async (
     const serviceName =
       provider.title || provider.category || provider.name;
 
-    // ====================================
-    // CREATE BOOKING
-    // ====================================
-
     const booking = await Booking.create({
       customer: customer._id,
       provider: provider._id,
-
-      // Link booking to the selected home.
-      // Null for bookings created without a selected home.
       home: selectedHome?._id ?? null,
-
       serviceName,
-
       bookingType: data.bookingType,
       description: data.description,
-
       bookingDate:
         data.bookingType === "pre_booking"
           ? data.bookingDate ?? null
           : null,
-
       bookingTime:
         data.bookingType === "pre_booking"
           ? data.bookingTime
           : "",
-
       location: data.location,
       contactPhone: data.contactPhone,
-
       amount: provider.startingPrice,
-
       status: "pending",
       paymentStatus: "pending",
     });
-
-    // ====================================
-    // NOTIFY CUSTOMER
-    // ====================================
 
     await createBookingNotification(
       customer._id,
@@ -354,10 +347,6 @@ export const createBooking = async (
       booking._id,
       booking.status
     );
-
-    // ====================================
-    // NOTIFY PROVIDER
-    // ====================================
 
     if (provider.user) {
       await createBookingNotification(
@@ -541,7 +530,16 @@ export const cancelMyBooking = async (
     }
 
     booking.status = "cancelled";
+    booking.providerTravelStatus = "stopped";
+    booking.providerLocation = null;
+    booking.trackingEndedAt = new Date();
+
     await booking.save();
+    emitTrackingUpdate(
+      booking.customer,
+      booking._id,
+      "stopped"
+    );
 
     await createBookingNotification(
       booking.customer,
@@ -551,7 +549,6 @@ export const cancelMyBooking = async (
       booking.status
     );
 
-    // Notify provider
     const provider = await Provider.findById(booking.provider).select("user");
 
     if (provider?.user) {
@@ -641,6 +638,78 @@ export const getProviderBookings = async (
   }
 };
 
+
+// ========================================
+// CUSTOMER: GET PROVIDER LIVE TRACKING
+// GET /api/v1/bookings/my/:id/tracking
+// ========================================
+
+export const getMyBookingTracking = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Please login first",
+      });
+    }
+
+    const id = getRouteParam(req.params.id);
+
+    if (!isValidId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID",
+      });
+    }
+
+    // Only the booking owner can access tracking information
+    const booking = await Booking.findOne({
+      _id: id,
+      customer: req.user.id,
+    })
+      .select(
+        "status provider providerTravelStatus providerLocation trackingStartedAt trackingEndedAt"
+      )
+      .populate("provider", "name title category profileImage")
+      .lean();
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    const trackingActive = [
+      "on-the-way",
+      "arrived",
+    ].includes(booking.providerTravelStatus);
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking tracking details fetched successfully",
+      tracking: {
+        bookingStatus: booking.status,
+        travelStatus: booking.providerTravelStatus,
+        trackingActive,
+        provider: booking.provider,
+        providerLocation: trackingActive
+          ? booking.providerLocation
+          : null,
+        trackingStartedAt: booking.trackingStartedAt,
+        trackingEndedAt: booking.trackingEndedAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 // ========================================
 // PROVIDER: GET BOOKING DETAILS
 // GET /api/v1/bookings/provider/:id
@@ -677,7 +746,6 @@ export const getProviderBookingById = async (
       });
     }
 
-    // Provider can only access their own bookings
     const booking = await Booking.findOne({
       _id: id,
       provider: provider._id,
@@ -748,7 +816,6 @@ export const updateProviderBookingStatus = async (
       });
     }
 
-    // Ownership check
     const booking = await Booking.findOne({
       _id: id,
       provider: provider._id,
@@ -787,9 +854,26 @@ export const updateProviderBookingStatus = async (
 
     if (newStatus === "completed") {
       booking.providerCompletedAt = new Date();
+      booking.providerTravelStatus = "stopped";
+      booking.providerLocation = null;
+      booking.trackingEndedAt = new Date();
+    }
+
+    if (newStatus === "rejected") {
+      booking.providerTravelStatus = "stopped";
+      booking.providerLocation = null;
+      booking.trackingEndedAt = new Date();
     }
 
     await booking.save();
+
+    if (newStatus === "completed" || newStatus === "rejected") {
+      emitTrackingUpdate(
+        booking.customer,
+        booking._id,
+        "stopped"
+      );
+    }
 
     const notificationMessages: Record<
       string,
@@ -836,12 +920,366 @@ export const updateProviderBookingStatus = async (
 };
 
 // ========================================
+// PROVIDER: START LIVE TRACKING
+// PATCH /api/v1/bookings/provider/:id/tracking/start
+// ========================================
+
+export const startProviderTracking = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Please login first",
+      });
+    }
+
+    const id = getRouteParam(req.params.id);
+
+    if (!isValidId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID",
+      });
+    }
+
+    const provider = await getAuthenticatedProvider(req.user.id);
+
+    if (!provider) {
+      return res.status(403).json({
+        success: false,
+        message: "Approved provider account not found",
+      });
+    }
+
+    const booking = await Booking.findOne({
+      _id: id,
+      provider: provider._id,
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (booking.status !== "confirmed") {
+      return res.status(400).json({
+        success: false,
+        message: "Tracking can only start for confirmed bookings",
+      });
+    }
+
+    if (
+      booking.providerTravelStatus === "on-the-way" ||
+      booking.providerTravelStatus === "arrived"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Tracking is already active",
+      });
+    }
+
+    booking.providerTravelStatus = "on-the-way";
+    booking.trackingStartedAt = new Date();
+    booking.trackingEndedAt = null;
+    booking.providerLocation = null;
+
+    await booking.save();
+
+    emitTrackingUpdate(
+      booking.customer,
+      booking._id,
+      "on-the-way"
+    );
+
+    await createBookingNotification(
+      booking.customer,
+      "Provider On The Way",
+      "Your service provider has started travelling to your location.",
+      booking._id,
+      booking.status
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Live tracking started",
+      booking,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ========================================
+// PROVIDER: UPDATE GPS LOCATION
+// PATCH /api/v1/bookings/provider/:id/tracking/location
+// ========================================
+
+export const updateProviderLocation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Please login first",
+      });
+    }
+
+    const id = getRouteParam(req.params.id);
+
+    if (!isValidId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID",
+      });
+    }
+
+    const parsed = providerLocationValidation.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid GPS coordinates",
+        errors: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const provider = await getAuthenticatedProvider(req.user.id);
+
+    if (!provider) {
+      return res.status(403).json({
+        success: false,
+        message: "Approved provider account not found",
+      });
+    }
+
+    const booking = await Booking.findOne({
+      _id: id,
+      provider: provider._id,
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (
+      booking.status !== "confirmed" ||
+      booking.providerTravelStatus !== "on-the-way"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Location updates are not active for this booking",
+      });
+    }
+
+    booking.providerLocation = {
+      latitude: parsed.data.latitude,
+      longitude: parsed.data.longitude,
+      updatedAt: new Date(),
+    };
+
+    await booking.save();
+
+    // Send live location to the booking customer
+    getIO().to(`user:${booking.customer.toString()}`).emit(
+      "provider:tracking:update",
+      {
+        bookingId: booking._id.toString(),
+        travelStatus: booking.providerTravelStatus,
+        location: booking.providerLocation,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Provider location updated",
+      location: booking.providerLocation,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ========================================
+// PROVIDER: MARK ARRIVED
+// PATCH /api/v1/bookings/provider/:id/tracking/arrived
+// ========================================
+
+export const markProviderArrived = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Please login first",
+      });
+    }
+
+    const id = getRouteParam(req.params.id);
+
+    if (!isValidId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID",
+      });
+    }
+
+    const provider = await getAuthenticatedProvider(req.user.id);
+
+    if (!provider) {
+      return res.status(403).json({
+        success: false,
+        message: "Approved provider account not found",
+      });
+    }
+
+    const booking = await Booking.findOne({
+      _id: id,
+      provider: provider._id,
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (
+      booking.status !== "confirmed" ||
+      booking.providerTravelStatus !== "on-the-way"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Provider cannot mark arrival for this booking",
+      });
+    }
+
+    booking.providerTravelStatus = "arrived";
+
+    await booking.save();
+    emitTrackingUpdate(
+      booking.customer,
+      booking._id,
+      "arrived"
+    );
+
+    await createBookingNotification(
+      booking.customer,
+      "Provider Has Arrived",
+      "Your service provider has arrived at your location.",
+      booking._id,
+      booking.status
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Arrival marked successfully",
+      booking,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ========================================
+// PROVIDER: STOP LIVE TRACKING
+// PATCH /api/v1/bookings/provider/:id/tracking/stop
+// ========================================
+
+export const stopProviderTracking = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Please login first",
+      });
+    }
+
+    const id = getRouteParam(req.params.id);
+
+    if (!isValidId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID",
+      });
+    }
+
+    const provider = await getAuthenticatedProvider(req.user.id);
+
+    if (!provider) {
+      return res.status(403).json({
+        success: false,
+        message: "Approved provider account not found",
+      });
+    }
+
+    const booking = await Booking.findOne({
+      _id: id,
+      provider: provider._id,
+    });
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (
+      !["on-the-way", "arrived"].includes(
+        booking.providerTravelStatus
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Live tracking is not active",
+      });
+    }
+
+    booking.providerTravelStatus = "stopped";
+    booking.trackingEndedAt = new Date();
+    booking.providerLocation = null;
+
+    await booking.save();
+    emitTrackingUpdate(
+      booking.customer,
+      booking._id,
+      "stopped"
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Live tracking stopped",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+// ========================================
 // CUSTOMER: LEGACY COMPLETION ENDPOINT
 // PATCH /api/v1/bookings/my/:id/confirm-completion
-//
-// Provider now marks the service as completed.
-// This handler is retained to avoid breaking existing
-// route imports, but it no longer changes booking status.
 // ========================================
 
 export const confirmServiceCompletion = async (
@@ -866,3 +1304,4 @@ export const confirmServiceCompletion = async (
     next(error);
   }
 };
+

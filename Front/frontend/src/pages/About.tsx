@@ -1,325 +1,380 @@
-import { motion } from "framer-motion";
-import {
-    ArrowRight,
-    ArrowUpRight,
-    ShieldCheck,
-    Users,
-    Target,
-    HeartHandshake,
-    MapPin,
-    Check,
-} from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { Bell, CalendarCheck, ArrowUpRight, Check, QrCode } from "lucide-react";
 
-const fadeUp = {
-    hidden: { opacity: 0, y: 16 },
-    visible: { opacity: 1, y: 0 },
-};
-
-const values = [
-    {
-        icon: ShieldCheck,
-        title: "Upfront & Transparent",
-        description:
-            "Clear service scopes, verified profiles, and honest pricing before anyone steps through your door.",
-    },
-    {
-        icon: HeartHandshake,
-        title: "Built Around Your Schedule",
-        description:
-            "Book professionals when you actually need them—without endless phone tag or vague arrival windows.",
-    },
-    {
-        icon: Target,
-        title: "Vetted Craftsmanship",
-        description:
-            "We prioritize skilled tradespeople and specialists who take pride in doing the job right the first time.",
-    },
-    {
-        icon: Users,
-        title: "Neighborhood First",
-        description:
-            "Strengthening local economies by connecting you directly with independent experts working in your area.",
-    },
-];
+/*
+  Credence About — redesign
+  Concept: the page is built from the thing Credence produces, a job record.
+  Palette: deep emerald #06281D · moss #4F665B · mint paper #F0F7F3 · white · emerald #34D399
+  Type: Bricolage Grotesque (headlines) + Instrument Sans (text)
+*/
 
 const steps = [
-    {
-        number: "01",
-        title: "Tell us what you need",
-        description:
-            "Browse specific trade categories or search for an urgent repair in your neighborhood.",
-    },
-    {
-        number: "02",
-        title: "Compare & pick a time",
-        description:
-            "Review local professionals, check their availability, and lock in a slot that fits your day.",
-    },
-    {
-        number: "03",
-        title: "Track until completion",
-        description:
-            "Get real-time status updates from confirmation to arrival until the job is signed off.",
-    },
+  {
+    title: "Describe the job",
+    text: "Browse by trade or explain the problem. Compare real profiles, specialties and availability.",
+  },
+  {
+    title: "Book a clear window",
+    text: "Pick a time that suits you and see what to expect before anyone arrives.",
+  },
+  {
+    title: "Get the record",
+    text: "When the work is signed off, you receive a permanent summary of what was done and who did it.",
+  },
 ];
 
+const principles = [
+  {
+    title: "Trust comes first",
+    text: "Clear profiles, verified credentials and upfront service details let you hire with confidence.",
+  },
+  {
+    title: "Respect for your time",
+    text: "Find a specialist, agree a window, and follow progress without endless back-and-forth.",
+  },
+  {
+    title: "People over algorithms",
+    text: "We connect neighbors with independent tradespeople who take pride in their reputation.",
+  },
+  {
+    title: "Accountability after the job",
+    text: "Every stage is documented, from first scope to final sign-off.",
+  },
+];
+
+const ease = [0.22, 1, 0.36, 1] as const;
+
 export default function About() {
-    return (
-        <main className="min-h-screen bg-[#fafaf9] text-stone-900 selection:bg-emerald-200 selection:text-emerald-950">
-            {/* HERO — Asymmetric Editorial Split */}
-            <section className="border-b border-stone-200 bg-white px-6 py-20 md:py-28">
-                <div className="mx-auto grid max-w-7xl items-end gap-12 lg:grid-cols-12">
-                    <motion.div
-                        initial="hidden"
-                        animate="visible"
-                        variants={fadeUp}
-                        transition={{ duration: 0.5 }}
-                        className="lg:col-span-7"
-                    >
-                        <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                            <span className="h-px w-8 bg-emerald-600" />
-                            About Credence
-                        </div>
+  const reduce = useReducedMotion();
 
-                        <h1 className="mt-6 text-4xl font-semibold leading-[1.1] tracking-tight text-stone-950 sm:text-5xl md:text-6xl">
-                            Dependable local help,{" "}
-                            <span className="font-normal italic text-emerald-700">
-                                without the guesswork.
-                            </span>
-                        </h1>
+  return (
+    <main
+      className="bg-[#F0F7F3] text-[#06281D] selection:bg-[#34D399] selection:text-[#06281D]"
+      style={{ fontFamily: "'Instrument Sans', system-ui, sans-serif" }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap');
+        .display { font-family: 'Bricolage Grotesque', 'Instrument Sans', system-ui, sans-serif; }
+        .tick-rule {
+          height: 10px;
+          background-image: repeating-linear-gradient(90deg, #06281D 0 1px, transparent 1px 12px);
+          opacity: .25;
+        }
+      `}</style>
 
-                        <p className="mt-6 max-w-xl text-lg leading-relaxed text-stone-600">
-                            Credence connects homeowners and businesses with vetted local
-                            professionals. From leaky pipes to routine maintenance, we bring
-                            clarity, scheduling, and accountability into one straightforward
-                            place.
-                        </p>
+      {/* HERO */}
+      <section className="px-6 pb-20 pt-16 sm:px-10 lg:px-16 lg:pb-28 lg:pt-24">
+        <div className="mx-auto grid max-w-[1280px] items-center gap-14 lg:grid-cols-[1.1fr_0.9fr] lg:gap-20">
+          <div>
+            <p className="text-sm font-medium text-[#4F665B]">About Credence</p>
+            <h1 className="display mt-5 text-[clamp(2.6rem,5.6vw,5.25rem)] font-bold leading-[1.02] tracking-[-0.035em]">
+              Good work, done by good people, and written down.
+            </h1>
+            <p className="mt-8 max-w-[52ch] text-lg leading-relaxed text-[#35493F]">
+              Credence is a local service platform for homeowners and independent
+              professionals who care about craft. Find vetted expertise, book a
+              reliable time, and keep a record of every job done in your space.
+            </p>
+            <div className="mt-10 flex flex-wrap gap-3">
+              <a
+                href="/services"
+                className="inline-flex items-center gap-2 rounded-md bg-[#06281D] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#0B3D2C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#06281D]"
+              >
+                Browse services
+                <ArrowUpRight size={16} />
+              </a>
+              <a
+                href="#story"
+                className="inline-flex items-center rounded-md border border-[#06281D]/25 px-6 py-3.5 text-sm font-semibold transition hover:border-[#06281D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#06281D]"
+              >
+                Read our story
+              </a>
+            </div>
+          </div>
 
-                        <div className="mt-10 flex flex-wrap items-center gap-4">
-                            <a
-                                href="/services"
-                                className="inline-flex items-center gap-2.5 rounded-lg bg-emerald-700 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-emerald-800"
-                            >
-                                Browse Services
-                                <ArrowRight size={16} />
-                            </a>
+          {/* The memorable element: a job record with a sign-off stamp */}
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease }}
+            className="relative mx-auto w-full max-w-[460px]"
+          >
+            <div className="overflow-hidden rounded-lg bg-white shadow-[0_1px_0_#06281D1a,0_24px_48px_-24px_#06281D55]">
+              <div className="flex items-center justify-between bg-[#06281D] px-6 py-4 text-white">
+                <span className="display text-lg font-bold tracking-tight">Credence</span>
+                <span className="text-xs text-white/60">Job record</span>
+              </div>
+              <div className="tick-rule" />
+              <dl className="divide-y divide-[#06281D]/10 px-6 text-sm">
+                {[
+                  ["Job", "Annual boiler service"],
+                  ["Specialist", "Verified, licensed gas engineer"],
+                  ["Visit", "Tue, 9:00–11:00 window"],
+                  ["Parts", "Filter, seal kit"],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-6 py-3.5">
+                    <dt className="text-[#4F665B]">{k}</dt>
+                    <dd className="text-right font-medium">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="flex items-center justify-between gap-4 border-t border-dashed border-[#06281D]/25 bg-[#F0F7F3] px-6 py-5">
+                <p className="max-w-[24ch] text-xs leading-5 text-[#4F665B]">
+                  Scan the tag on the boiler to see this record any time.
+                </p>
+                <QrCode size={52} strokeWidth={1.4} />
+              </div>
+            </div>
 
-                            <a
-                                href="#our-story"
-                                className="inline-flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-6 py-3.5 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
-                            >
-                                Why we built this
-                            </a>
-                        </div>
-                    </motion.div>
+            <motion.div
+              initial={reduce ? false : { opacity: 0, scale: 1.6, rotate: -14 }}
+              animate={{ opacity: 1, scale: 1, rotate: -8 }}
+              transition={{ delay: 0.9, duration: 0.35, ease: "easeOut" }}
+              className="absolute -right-3 top-[44%] flex items-center gap-1.5 rounded-md border-2 border-[#06281D] bg-[#34D399] px-4 py-2 text-sm font-bold text-[#06281D] sm:-right-8"
+            >
+              <Check size={16} strokeWidth={3} /> Signed off
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
 
-                    {/* Framed Photo + Grounded Caption Bar */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, delay: 0.1 }}
-                        className="lg:col-span-5"
-                    >
-                        <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-100">
-                            <img
-                                src="https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=1000&q=85"
-                                alt="Home service professional at work"
-                                className="h-[340px] w-full object-cover md:h-[400px]"
-                            />
-                            <div className="flex items-center justify-between border-t border-stone-200 bg-white px-5 py-4">
-                                <div className="flex items-center gap-2.5 text-sm font-medium text-stone-800">
-                                    <MapPin size={16} className="text-emerald-700" />
-                                    Local professionals in your area
-                                </div>
-                                <span className="text-xs font-medium text-stone-400">
-                                    Verified Network
-                                </span>
-                            </div>
-                        </div>
-                    </motion.div>
-                </div>
-            </section>
+      {/* STORY */}
+      <section id="story" className="bg-white px-6 py-24 sm:px-10 lg:px-16 lg:py-32">
+        <div className="mx-auto grid max-w-[1280px] gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24">
+          <h2 className="display text-3xl font-bold leading-tight tracking-[-0.03em] sm:text-4xl lg:max-w-[14ch]">
+            Hiring help shouldn’t feel like a gamble.
+          </h2>
+          <div>
+            <p className="text-xl leading-relaxed sm:text-2xl">
+              The right tradesperson can turn a stressful household problem into a
+              quick, painless fix. Finding that person shouldn’t mean digging
+              through outdated directories or guessing who will actually show up.
+            </p>
+            <p className="mt-6 max-w-[62ch] text-base leading-8 text-[#35493F]">
+              We started Credence to give independent professionals a place where
+              their workmanship speaks for itself, and to give customers a calm,
+              organized way to book, communicate and keep records of their home
+              maintenance.
+            </p>
+            <div className="mt-12 grid gap-px overflow-hidden rounded-lg bg-[#06281D]/10 sm:grid-cols-2">
+              <div className="bg-white p-6 sm:pr-8">
+                <h3 className="display text-lg font-bold">Our mission</h3>
+                <p className="mt-2 text-sm leading-7 text-[#35493F]">
+                  Remove the friction from finding, scheduling and documenting
+                  everyday local services.
+                </p>
+              </div>
+              <div className="bg-white p-6 sm:pl-8">
+                <h3 className="display text-lg font-bold">Our standard</h3>
+                <p className="mt-2 text-sm leading-7 text-[#35493F]">
+                  A neighborhood network where reliable work earns lasting trust,
+                  not just fleeting star ratings.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            {/* OUR STORY — Split Two-Column Manifesto */}
-            <section id="our-story" className="border-b border-stone-200 px-6 py-24">
-                <motion.div
-                    initial="hidden"
-                    whileInView="visible"
-                    viewport={{ once: true }}
-                    variants={fadeUp}
-                    transition={{ duration: 0.5 }}
-                    className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-12"
+      {/* HOW IT WORKS: a real sequence, drawn as a timeline */}
+      <section className="px-6 py-24 sm:px-10 lg:px-16 lg:py-32">
+        <div className="mx-auto max-w-[1280px]">
+          <h2 className="display max-w-[22ch] text-3xl font-bold leading-tight tracking-[-0.03em] sm:text-4xl">
+            From first search to final sign-off.
+          </h2>
+
+          <ol className="mt-16 grid gap-10 md:grid-cols-3 md:gap-0">
+            {steps.map((s, i) => (
+              <li key={s.title} className="relative md:pr-10">
+                {/* connector */}
+                {i < steps.length - 1 && (
+                  <span
+                    aria-hidden
+                    className="absolute left-12 top-[19px] hidden h-px w-[calc(100%-3rem)] bg-[#06281D]/25 md:block"
+                  />
+                )}
+                <span
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${
+                    i === steps.length - 1
+                      ? "bg-[#34D399] text-[#06281D]"
+                      : "bg-[#06281D] text-white"
+                  }`}
                 >
-                    <div className="lg:col-span-5">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                            Our Story
-                        </span>
-                        <h2 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-stone-950 md:text-4xl">
-                            Hiring a pro shouldn’t feel like a gamble.
-                        </h2>
-                    </div>
+                  {i === steps.length - 1 ? <Check size={18} strokeWidth={3} /> : i + 1}
+                </span>
+                <h3 className="display mt-6 text-xl font-bold tracking-tight">{s.title}</h3>
+                <p className="mt-3 max-w-[34ch] text-sm leading-7 text-[#35493F]">{s.text}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
 
-                    <div className="space-y-6 text-base leading-relaxed text-stone-600 md:text-lg lg:col-span-7">
-                        <p>
-                            Anyone who has ever needed an urgent repair knows the routine:
-                            scrolling through outdated directories, leaving voicemails that
-                            never get returned, and wondering who is actually going to show
-                            up at the door.
-                        </p>
-                        <p>
-                            We started Credence to fix that disconnect. Instead of acting as a
-                            noisy bulletin board, we built an organized booking network where
-                            skilled local professionals can showcase their real availability,
-                            and customers can book with clear expectations from start to
-                            finish.
-                        </p>
+      {/* PRINCIPLES: not a sequence, so no numbering */}
+      <section className="bg-[#06281D] px-6 py-24 text-white sm:px-10 lg:px-16 lg:py-32">
+        <div className="mx-auto max-w-[1280px]">
+          <h2 className="display max-w-[20ch] text-3xl font-bold leading-tight tracking-[-0.03em] sm:text-4xl">
+            Software should stay out of the way and let expertise take center stage.
+          </h2>
+          <div className="mt-16 grid gap-x-16 gap-y-12 sm:grid-cols-2">
+            {principles.map((p) => (
+              <div key={p.title} className="border-t-2 border-[#34D399] pt-5">
+                <h3 className="display text-xl font-bold tracking-tight">{p.title}</h3>
+                <p className="mt-3 max-w-[44ch] text-base leading-7 text-white/70">{p.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-                        {/* Mission & Vision integrated cleanly as architectural callouts */}
-                        <div className="grid gap-6 border-t border-stone-200 pt-8 sm:grid-cols-2">
-                            <div>
-                                <h3 className="text-sm font-semibold uppercase tracking-wider text-stone-900">
-                                    Our Mission
-                                </h3>
-                                <p className="mt-2 text-sm leading-relaxed text-stone-600">
-                                    Remove the friction from finding, scheduling, and tracking
-                                    everyday home and local services.
-                                </p>
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-semibold uppercase tracking-wider text-stone-900">
-                                    Our Vision
-                                </h3>
-                                <p className="mt-2 text-sm leading-relaxed text-stone-600">
-                                    Become the most trusted neighborhood directory where great
-                                    local tradespeople thrive on reputation.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </motion.div>
-            </section>
+      {/* FEATURES: ORIN + Service Passport */}
+      <section className="px-6 py-24 sm:px-10 lg:px-16 lg:py-32">
+        <div className="mx-auto max-w-[1280px]">
+          <h2 className="display max-w-[20ch] text-3xl font-bold leading-tight tracking-[-0.03em] sm:text-4xl">
+            Credence features.
+          </h2>
 
-            {/* HOW IT WORKS — Clean Architectural Steps (No Floating Cards) */}
-            <section className="border-b border-stone-200 bg-white px-6 py-24">
-                <div className="mx-auto max-w-7xl">
-                    <div className="max-w-2xl">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                            How It Works
-                        </span>
-                        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 md:text-4xl">
-                            From search to signed off in three steps.
-                        </h2>
-                    </div>
+          <div className="mt-14 grid gap-6 lg:grid-cols-2">
+            <article className="flex flex-col justify-between rounded-lg bg-white p-8 sm:p-10">
+              <div>
+            
+                <h3 className="display mt-5 text-2xl font-bold tracking-tight">
+                  ORIN: guidance when you aren’t sure who to call
+                </h3>
+                <p className="mt-4 max-w-[52ch] text-sm leading-7 text-[#35493F] sm:text-base">
+                  Not every household issue comes with an obvious job title. ORIN
+                  turns a plain-English problem into the right service category and
+                  connects you with specialists equipped to handle it.
+                </p>
+              </div>
+              <div className="mt-10 space-y-3 text-sm">
+                <p className="ml-auto max-w-[88%] rounded-lg rounded-br-sm bg-[#06281D] px-4 py-3 text-white">
+                  Water pressure dropped in the upstairs bathroom after a cold snap.
+                </p>
+                <p className="max-w-[88%] rounded-lg rounded-bl-sm bg-[#F0F7F3] px-4 py-3">
+                  This sounds like a pipe issue. I’d book a licensed plumber for a
+                  pipe inspection.
+                </p>
+              </div>
+            </article>
 
-                    <div className="mt-14 grid divide-y divide-stone-200 border-y border-stone-200 md:grid-cols-3 md:divide-x md:divide-y-0">
-                        {steps.map((step, index) => (
-                            <motion.div
-                                key={step.number}
-                                initial="hidden"
-                                whileInView="visible"
-                                viewport={{ once: true }}
-                                variants={fadeUp}
-                                transition={{ duration: 0.4, delay: index * 0.1 }}
-                                className="py-8 md:px-8 md:py-10 first:md:pl-0 last:md:pr-0"
-                            >
-                                <span className="font-mono text-sm font-semibold text-emerald-700">
-                                    STEP {step.number}
-                                </span>
-                                <h3 className="mt-4 text-xl font-semibold text-stone-950">
-                                    {step.title}
-                                </h3>
-                                <p className="mt-3 text-sm leading-relaxed text-stone-600">
-                                    {step.description}
-                                </p>
-                            </motion.div>
-                        ))}
-                    </div>
+            <article className="flex flex-col justify-between rounded-lg border border-[#06281D]/15 bg-white p-8 sm:p-10">
+              <div>
+                <h3 className="display mt-5 text-2xl font-bold tracking-tight">
+                  Service Passport: a permanent record for every job
+                </h3>
+                <p className="mt-4 max-w-[52ch] text-sm leading-7 text-[#35493F] sm:text-base">
+                  Months later, it’s hard to remember who serviced the boiler or
+                  what parts were replaced. Scannable QR service tags keep your
+                  maintenance history attached to your home.
+                </p>
+              </div>
+              <div className="mt-10 flex items-center justify-between gap-6 rounded-lg bg-[#F0F7F3] p-5">
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2">
+                    <Check size={15} className="shrink-0" /> Technician and date logged
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check size={15} className="shrink-0" /> Parts and notes saved
+                  </li>
+                </ul>
+                <QrCode size={56} strokeWidth={1.4} className="shrink-0" />
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      {/* MOBILE APP */}
+      <section className="bg-white px-6 py-24 sm:px-10 lg:px-16 lg:py-32">
+        <div className="mx-auto grid max-w-[1280px] items-center gap-16 lg:grid-cols-[1fr_0.8fr] lg:gap-24">
+          <div>
+            <span className="inline-block rounded-full bg-[#34D399] px-3 py-1 text-xs font-semibold">
+              Launching soon
+            </span>
+            <h2 className="display mt-5 max-w-[16ch] text-3xl font-bold leading-tight tracking-[-0.03em] sm:text-5xl">
+              Credence Mobile app
+            </h2>
+            <p className="mt-6 max-w-[52ch] text-lg leading-relaxed text-[#35493F]">
+              Everything you do on Credence, in your pocket. Book a specialist,
+              follow the visit, and open any job record the moment you need it.
+            </p>
+            <ul className="mt-10 space-y-6">
+              {[
+                [CalendarCheck, "Book and track", "Pick a window and see when your specialist is on the way."],
+                [Bell, "Stay informed", "Get a notice when a visit is confirmed, started and signed off."],
+                [QrCode, "Scan to see the record", "Point your camera at a service tag to open its full job history."],
+              ].map(([Icon, title, text]: any) => (
+                <li key={title} className="flex gap-4">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F0F7F3] text-[#06281D]">
+                    <Icon size={20} />
+                  </span>
+                  <div>
+                    <h3 className="display text-lg font-bold">{title}</h3>
+                    <p className="mt-1 max-w-[44ch] text-sm leading-7 text-[#35493F]">{text}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Phone */}
+          <div
+            className="mx-auto w-full max-w-[290px] h-[500px] rounded-[2rem] border-[8px] border-[#06281D] bg-[#F0F7F3] shadow-[0_24px_48px_-24px_#06281D77]"
+            aria-hidden
+          >
+            <div className="mx-auto mt-2 h-1.5 w-16 rounded-full bg-[#06281D]/20" />
+            <div className="space-y-4 px-5 pb-6 pt-6">
+              <div>
+                <p className="text-xs text-[#4F665B]">Your home</p>
+                <p className="display text-xl font-bold tracking-tight">Job records</p>
+              </div>
+              <div className="rounded-lg bg-white p-4 text-sm shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">Annual boiler service</span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#34D399]">
+                    <Check size={12} strokeWidth={3} />
+                  </span>
                 </div>
-            </section>
-
-            {/* VALUES — Structured 2x2 Grid with Crisp Hairlines */}
-            <section className="px-6 py-24">
-                <div className="mx-auto max-w-7xl">
-                    <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-                        <div>
-                            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                                Principles
-                            </span>
-                            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 md:text-4xl">
-                                What we stand behind
-                            </h2>
-                        </div>
-                        <p className="max-w-md text-sm leading-relaxed text-stone-600">
-                            Every product decision we make is measured against how well it
-                            serves both the customer and the professional doing the work.
-                        </p>
-                    </div>
-
-                    <div className="mt-14 grid gap-px overflow-hidden rounded-xl border border-stone-200 bg-stone-200 sm:grid-cols-2">
-                        {values.map((value, index) => {
-                            const Icon = value.icon;
-                            return (
-                                <motion.div
-                                    key={value.title}
-                                    initial="hidden"
-                                    whileInView="visible"
-                                    viewport={{ once: true }}
-                                    variants={fadeUp}
-                                    transition={{ delay: index * 0.08 }}
-                                    className="bg-white p-8 md:p-10"
-                                >
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700">
-                                        <Icon size={20} />
-                                    </div>
-                                    <h3 className="mt-6 text-lg font-semibold text-stone-950">
-                                        {value.title}
-                                    </h3>
-                                    <p className="mt-2.5 text-sm leading-relaxed text-stone-600">
-                                        {value.description}
-                                    </p>
-                                </motion.div>
-                            );
-                        })}
-                    </div>
+                <p className="mt-1 text-xs text-[#4F665B]">Signed off · Filter, seal kit</p>
+              </div>
+              <div className="rounded-lg bg-white p-4 text-sm shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">Pipe inspection</span>
+                  <span className="rounded-full bg-[#06281D] px-2 py-0.5 text-[10px] font-semibold text-white">
+                    Tue 9:00
+                  </span>
                 </div>
-            </section>
+                <p className="mt-1 text-xs text-[#4F665B]">Booked · Licensed plumber</p>
+              </div>
+              <div className="flex items-center justify-center gap-2 rounded-lg bg-[#06281D] py-3 mt-40 text-sm font-semibold text-white">
+                <QrCode size={16} /> Scan service tag
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            {/* CTA — Grounded Deep Forest Banner */}
-            <section className="px-6 pb-24">
-                <motion.div
-                    initial="hidden"
-                    whileInView="visible"
-                    viewport={{ once: true }}
-                    variants={fadeUp}
-                    className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 rounded-2xl bg-emerald-950 px-8 py-14 text-white md:flex-row md:items-center md:px-14"
-                >
-                    <div className="max-w-xl">
-                        <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                            Ready to cross that task off your list?
-                        </h2>
-                        <p className="mt-3 text-sm leading-relaxed text-emerald-200/80 sm:text-base">
-                            Explore available services in your area and book a vetted local
-                            professional in minutes.
-                        </p>
-                        <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-xs text-emerald-300">
-                            <span className="inline-flex items-center gap-1.5">
-                                <Check size={14} /> No hidden booking fees
-                            </span>
-                            <span className="inline-flex items-center gap-1.5">
-                                <Check size={14} /> Direct status tracking
-                            </span>
-                        </div>
-                    </div>
-
-                    <a
-                        href="/services"
-                        className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-emerald-500 px-6 py-3.5 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
-                    >
-                        Explore Services
-                        <ArrowUpRight size={17} />
-                    </a>
-                </motion.div>
-            </section>
-        </main>
-    );
+      {/* CTA */}
+      <section className="bg-[#34D399] px-6 py-16 sm:px-10 lg:px-16 lg:py-20">
+        <div className="mx-auto flex max-w-[1280px] flex-col items-start justify-between gap-8 md:flex-row md:items-center">
+          <div>
+            <h2 className="display max-w-[22ch] text-3xl font-bold leading-tight tracking-[-0.03em] sm:text-4xl">
+              Ready to find the right person for the job?
+            </h2>
+            <p className="mt-3 text-base text-[#06281D]/75">
+              Browse available services and connect with local professionals.
+            </p>
+          </div>
+          <a
+            href="/services"
+            className="inline-flex shrink-0 items-center gap-2 rounded-md bg-[#06281D] px-7 py-4 text-sm font-semibold text-white transition hover:bg-[#0B3D2C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#06281D]"
+          >
+            Browse services
+            <ArrowUpRight size={17} />
+          </a>
+        </div>
+      </section>
+    </main>
+  );
 }

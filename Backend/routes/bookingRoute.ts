@@ -10,6 +10,11 @@ import {
   getProviderBookings,
   getProviderBookingById,
   updateProviderBookingStatus,
+  startProviderTracking,
+  updateProviderLocation,
+  markProviderArrived,
+  stopProviderTracking,
+  getMyBookingTracking,
 } from "../controllers/bookingControl.js";
 
 import {
@@ -61,6 +66,45 @@ router.patch(
   "/provider/:id/status",
   providerOnly,
   updateProviderBookingStatus
+);
+
+// ========================================
+// PROVIDER LIVE TRACKING ROUTES
+// ========================================
+
+// Start live tracking
+router.patch(
+  "/provider/:id/tracking/start",
+  providerOnly,
+  startProviderTracking
+);
+
+// Update provider GPS location
+router.patch(
+  "/provider/:id/tracking/location",
+  providerOnly,
+  updateProviderLocation
+);
+
+// Mark provider as arrived
+router.patch(
+  "/provider/:id/tracking/arrived",
+  providerOnly,
+  markProviderArrived
+);
+
+// Stop live tracking
+router.patch(
+  "/provider/:id/tracking/stop",
+  providerOnly,
+  stopProviderTracking
+);
+
+// Get provider live tracking
+router.get(
+  "/my/:id/tracking",
+  customerOnly,
+  getMyBookingTracking
 );
 
 export default router;
