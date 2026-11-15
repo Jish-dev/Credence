@@ -37,6 +37,10 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(6).max(100),
 });
 
+const updateProfileSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  phone: z.string().trim().max(20).optional().default(""),
+});
 // ========================================
 // JWT CONFIGURATION
 // ========================================
@@ -410,6 +414,73 @@ export const getMe = async (
   }
 };
 
+
+// ========================================
+// UPDATE CUSTOMER PROFILE
+// PATCH /api/v1/auth/profile
+// ========================================
+
+export const updateProfile = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const parsed = updateProfileSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid profile details",
+        errors: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+
+    if (!user || !user.isActive) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // This endpoint is for customer accounts only.
+    if (user.role !== "customer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only customers can update their profile here",
+      });
+    }
+
+    user.name = parsed.data.name;
+    user.phone = parsed.data.phone;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ========================================
 // FORGOT PASSWORD - SEND OTP
 // POST /api/v1/auth/forgot-password
@@ -641,3 +712,4 @@ export const resetPassword = async (
     next(error);
   }
 };
+

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bell, CalendarCheck, ChevronDown, LogOut, UserRound } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { api, type User } from "../api";
@@ -38,10 +38,13 @@ const navLinks: NavLink[] = [
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
-export default function Navbar({ user }: NavbarProps) {
+export default function Navbar({ user, onLogout }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [homeSection, setHomeSection] = useState("Home");
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const profileRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -87,6 +90,37 @@ export default function Navbar({ user }: NavbarProps) {
       window.clearInterval(interval);
     };
   }, [user]);
+
+  // Close the profile dropdown on route change
+  useEffect(() => {
+    setProfileOpen(false);
+  }, [pathname]);
+
+  // Close the profile dropdown on outside click or Escape
+  useEffect(() => {
+    if (!profileOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target as Node)
+      ) {
+        setProfileOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setProfileOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [profileOpen]);
 
   // Scroll spy (home page only) + Escape to close the menu
   useEffect(() => {
@@ -140,7 +174,21 @@ export default function Navbar({ user }: NavbarProps) {
 
   const goToProfile = () => {
     setMobileMenuOpen(false);
+    setProfileOpen(false);
     navigate("/profile");
+  };
+
+  const goToBookings = () => {
+    setMobileMenuOpen(false);
+    setProfileOpen(false);
+    navigate("/my-bookings");
+  };
+
+  const handleLogout = () => {
+    setMobileMenuOpen(false);
+    setProfileOpen(false);
+    onLogout?.();
+    navigate("/");
   };
 
   const goToNotifications = () => {
@@ -197,6 +245,7 @@ export default function Navbar({ user }: NavbarProps) {
   // ----------------------------------------
 
   const initial = (user?.name || "U").charAt(0).toUpperCase();
+  const isCustomer = user?.role === "customer";
 
   const NotificationButton = ({ mobile = false }: { mobile?: boolean }) => (
     <motion.button
@@ -232,21 +281,95 @@ export default function Navbar({ user }: NavbarProps) {
     </motion.button>
   );
 
-  const ProfileButton = ({ mobile = false }: { mobile?: boolean }) => (
-    <motion.button
-      type="button"
-      whileTap={{ scale: 0.96 }}
-      onClick={goToProfile}
-      aria-label="View your profile"
-      title={user?.name || "My profile"}
-      className={
-        mobile
-          ? "flex w-full items-center justify-center gap-3 rounded-lg bg-emerald-800 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-900"
-          : "flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-900 transition-colors hover:bg-emerald-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-      }
-    >
-      {mobile ? "My profile" : initial}
-    </motion.button>
+  // Desktop profile dropdown (rendered inline, not as a component,
+  // so its open state is never reset by a re-render)
+  const profileDropdown = (
+    <div ref={profileRef} className="relative">
+      <motion.button
+        type="button"
+        whileTap={{ scale: 0.96 }}
+        onClick={() => setProfileOpen((open) => !open)}
+        aria-label="Open account menu"
+        aria-haspopup="menu"
+        aria-expanded={profileOpen}
+        title={user?.name || "My account"}
+        className="flex h-10 items-center gap-1.5 rounded-full bg-emerald-100 pl-1 pr-2.5 text-emerald-900 transition-colors hover:bg-emerald-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-800 text-sm font-bold text-white">
+          {initial}
+        </span>
+        <motion.span
+          aria-hidden="true"
+          animate={{ rotate: profileOpen ? 180 : 0 }}
+          transition={{ duration: 0.2, ease: easeOut }}
+          className="flex"
+        >
+          <ChevronDown size={16} />
+        </motion.span>
+      </motion.button>
+
+      <AnimatePresence>
+        {profileOpen && (
+          <motion.div
+            role="menu"
+            aria-label="Account menu"
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            transition={{ duration: 0.18, ease: easeOut }}
+            className="absolute right-0 top-[calc(100%+10px)] w-60 origin-top-right overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10"
+          >
+            {/* Signed-in user */}
+            <div className="border-b border-slate-100 bg-emerald-50/60 px-4 py-3">
+              <p className="truncate text-sm font-extrabold text-slate-900">
+                {user?.name || "My account"}
+              </p>
+              {user?.email && (
+                <p className="mt-0.5 truncate text-xs text-slate-500">
+                  {user.email}
+                </p>
+              )}
+            </div>
+
+            <div className="p-1.5">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={goToProfile}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-emerald-800"
+              >
+                <UserRound size={17} aria-hidden="true" />
+                My Profile
+              </button>
+
+              {isCustomer && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={goToBookings}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-emerald-800"
+                >
+                  <CalendarCheck size={17} aria-hidden="true" />
+                  My Bookings
+                </button>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 p-1.5">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+              >
+                <LogOut size={17} aria-hidden="true" />
+                Logout
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 
   // ----------------------------------------
@@ -317,8 +440,8 @@ export default function Navbar({ user }: NavbarProps) {
           <div className="hidden items-center gap-3 md:flex">
             {user ? (
               <>
-                {user.role === "customer" && <NotificationButton />}
-                <ProfileButton />
+                {isCustomer && <NotificationButton />}
+                {profileDropdown}
               </>
             ) : (
               <>
@@ -339,7 +462,6 @@ export default function Navbar({ user }: NavbarProps) {
                   className="rounded-lg bg-emerald-800 px-5 py-2.5 font-semibold text-white transition-colors hover:bg-emerald-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
                 >
                   Get the app
-                  
                 </motion.button>
               </>
             )}
@@ -423,33 +545,74 @@ export default function Navbar({ user }: NavbarProps) {
                   })}
                 </nav>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {user ? (
-                    <>
-                      {user.role === "customer" && (
-                        <NotificationButton mobile />
-                      )}
-                      <ProfileButton mobile />
-                    </>
-                  ) : (
-                    <>
+                {user ? (
+                  <div className="mt-5 space-y-3">
+                    {/* Signed-in user */}
+                    <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-800 text-sm font-bold text-white">
+                        {initial}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-slate-900">
+                          {user.name || "My account"}
+                        </p>
+                        {user.email && (
+                          <p className="truncate text-xs text-slate-500">
+                            {user.email}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {isCustomer && <NotificationButton mobile />}
+
+                    <button
+                      type="button"
+                      onClick={goToProfile}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-emerald-700 hover:bg-emerald-50"
+                    >
+                      <UserRound size={17} aria-hidden="true" />
+                      My Profile
+                    </button>
+
+                    {isCustomer && (
                       <button
                         type="button"
-                        onClick={goToLogin}
-                        className="w-full rounded-lg border border-slate-300 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-emerald-700 hover:bg-emerald-50"
+                        onClick={goToBookings}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-emerald-700 hover:bg-emerald-50"
                       >
-                        Sign in
+                        <CalendarCheck size={17} aria-hidden="true" />
+                        My Bookings
                       </button>
-                      <button
-                        type="button"
-                        onClick={goToApp}
-                        className="w-full rounded-lg bg-emerald-800 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-900"
-                      >
-                        Get the app
-                      </button>
-                    </>
-                  )}
-                </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-rose-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-rose-700"
+                    >
+                      <LogOut size={17} aria-hidden="true" />
+                      Logout
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={goToLogin}
+                      className="w-full rounded-lg border border-slate-300 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-emerald-700 hover:bg-emerald-50"
+                    >
+                      Sign in
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToApp}
+                      className="w-full rounded-lg bg-emerald-800 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-900"
+                    >
+                      Get the app
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

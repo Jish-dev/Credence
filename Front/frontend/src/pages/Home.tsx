@@ -1418,65 +1418,6 @@ export default function Home() {
       </section>
 
       {/* ========================================
-          EMERGENCY ASSISTANCE
-      ======================================== */}
-
-      <section
-        id="pulse"
-        className="reveal-on-scroll opacity-0 translate-y-8 bg-white py-12 transition-all duration-700 ease-out"
-      >
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="relative overflow-hidden rounded-3xl border border-red-500/20 bg-gradient-to-r from-red-50 via-red-50/70 to-red-50 p-8 shadow-sm transition-all duration-500 hover:shadow-md">
-            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-red-500/10 blur-3xl animate-pulse" />
-
-            <div className="relative z-10 grid gap-6 md:grid-cols-[1.5fr_1fr] md:items-center">
-              <div>
-                <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-100 px-3 py-1.5 text-[10px] font-bold text-red-800">
-                  <span className="h-2 w-2 animate-ping rounded-full bg-red-600" />
-                  Emergency assistance
-                </div>
-
-                <h2 className="text-2xl font-black text-slate-900 sm:text-3xl">
-                  Need help right now?
-                </h2>
-
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Describe your issue and explore professionals who can help.
-                </p>
-              </div>
-
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  openProfessionals("All");
-                }}
-                className="flex flex-col gap-3 sm:flex-row md:justify-end"
-              >
-                <input
-                  id="emergency-search"
-                  type="text"
-                  value={searchQuery}
-                  onChange={(event) =>
-                    setSearchQuery(event.target.value)
-                  }
-                  placeholder="Describe your issue..."
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-800 outline-none transition duration-200 placeholder:text-slate-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-                />
-
-                <button
-                  type="submit"
-                  className="shimmer-btn flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-md transition-all duration-200 hover:bg-red-500 active:scale-95"
-                >
-                  Find Help
-                  <ArrowRight size={15} />
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ========================================
           CUSTOMER TESTIMONIALS
       ======================================== */}
 

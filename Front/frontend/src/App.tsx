@@ -21,6 +21,7 @@ import Services from "./pages/Service";
 import AllProf from "./pages/AllPro";
 import ScrollToTop from "./components/ScrollToTop";
 import Terms from "./pages/Terms";
+import About from "./pages/About";
 
 // ========================================
 // LOADING SCREEN
@@ -147,6 +148,7 @@ function AppLayout() {
           <Route path="/service" element={<Services/>}/>
           <Route path="/professionals" element={<AllProf />} />
           <Route path="/terms-policy" element={<Terms/>}/>
+          <Route path="/about" element={<About/>} />
         </Routes>
       </main>
 

@@ -5,6 +5,7 @@ import {
   login,
   googleLogin,
   getMe,
+  updateProfile,
   forgotPassword,
   verifyResetOtp,
   resetPassword,
@@ -23,5 +24,6 @@ router.post("/reset-password", resetPassword);
 router.post("/google", googleLogin);
 
 router.get("/me", protect, getMe);
+router.patch("/profile", protect, updateProfile);
 
 export default router;

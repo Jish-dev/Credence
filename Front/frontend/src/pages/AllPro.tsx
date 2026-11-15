@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search,
   SlidersHorizontal,
@@ -7,6 +7,7 @@ import {
   Star,
   CalendarDays,
   ShieldCheck,
+  BadgeCheck,
   Heart,
   Grid2X2,
   List,
@@ -51,13 +52,48 @@ type Provider = {
 type ProviderResponse = Provider[] | { data?: Provider[]; providers?: Provider[]; results?: Provider[] };
 
 const CATEGORIES = [
-  { name: "Plumbing", count: 32 },
-  { name: "Electrical", count: 0},
-  { name: "AC Service", count: 0 },
-  { name: "Home Cleaning", count: 0 },
-  { name: "Carpentry", count: 0 },
-  { name: "Painting", count: 0 },
+  { name: "Plumbing" },
+  { name: "Electrical" },
+  { name: "AC Service" },
+  { name: "Home Cleaning" },
+  { name: "Carpentry" },
+  { name: "Painting" },
+  { name: "Appliance Repair" },
+  { name: "Vehicle Repair" },
 ];
+
+// Homepage category labels and provider database labels can differ.
+const CATEGORY_ALIASES: Record<string, string[]> = {
+  Plumbing: ["plumbing", "plumber"],
+  Electrical: ["electrical", "electrical services", "electrical works", "electrician"],
+  "AC Service": ["ac service", "ac repair", "ac installation & repair", "air conditioning", "hvac"],
+  "Home Cleaning": ["home cleaning", "cleaning", "house cleaning"],
+  Carpentry: ["carpentry", "carpenter"],
+  Painting: ["painting", "painter"],
+  "Appliance Repair": ["appliance repair", "appliances", "washing machine repair", "refrigerator repair"],
+  "Vehicle Repair": ["vehicle repair", "vehicle support", "car repair", "bike repair", "automotive", "roadside assistance"],
+};
+
+const normalize = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, " ").trim();
+
+function canonicalCategory(value: string): string {
+  const normalized = normalize(value);
+  const entry = Object.entries(CATEGORY_ALIASES).find(([name, aliases]) =>
+    normalize(name) === normalized || aliases.some((alias) => normalize(alias) === normalized)
+  );
+  return entry?.[0] ?? value.trim();
+}
+
+function providerMatchesCategory(provider: Provider, selected: string): boolean {
+  const aliases = CATEGORY_ALIASES[canonicalCategory(selected)] || [selected];
+  const terms = aliases.map(normalize);
+  const providerCategories = [provider.category, ...(provider.categories || [])]
+    .filter((item): item is string => Boolean(item))
+    .map(normalize);
+  return providerCategories.some((category) =>
+    terms.some((term) => category === term || category.includes(term) || term.includes(category))
+  );
+}
 
 const LOCATIONS = ["All Locations", "Malappuram", "Manjeri", "Nilambur", "Perinthalmanna", "Kondotty", "Kochi", "Calicut"];
 
@@ -105,13 +141,17 @@ function getInitials(name: string) {
 // Visual direction: restrained, editorial marketplace styling rather than a glossy AI-generated look.
 export default function AllProf() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlCategory = searchParams.get("category") || "";
+  const urlSearch = searchParams.get("search") || searchParams.get("q") || "";
+  const urlLocation = searchParams.get("location") || "";
   const [professionals, setProfessionals] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [location, setLocation] = useState("All Locations");
+  const [searchInput, setSearchInput] = useState(urlSearch);
+  const [searchTerm, setSearchTerm] = useState(urlSearch);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(() => urlCategory ? [canonicalCategory(urlCategory)] : []);
+  const [location, setLocation] = useState(urlLocation || "All Locations");
   const [ratingFilter, setRatingFilter] = useState<number | null>(null);
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sortBy, setSortBy] = useState("Highest Rated");
@@ -124,6 +164,23 @@ export default function AllProf() {
       return [];
     }
   });
+
+  // Keep filters in sync with homepage navigation and browser Back/Forward.
+  useEffect(() => {
+    setSelectedCategories(urlCategory ? [canonicalCategory(urlCategory)] : []);
+    setSearchInput(urlSearch);
+    setSearchTerm(urlSearch);
+    setLocation(urlLocation || "All Locations");
+  }, [urlCategory, urlSearch, urlLocation]);
+
+  const updateUrlFilters = (updates: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    });
+    setSearchParams(next);
+  };
 
   const pageSize = 8;
 
@@ -172,11 +229,7 @@ export default function AllProf() {
 
     if (selectedCategories.length > 0) {
       result = result.filter((provider) => {
-        const category = providerCategory(provider).toLowerCase();
-        const categories = (provider.categories || []).map((item) => item.toLowerCase());
-        return selectedCategories.some(
-          (selected) => category === selected.toLowerCase() || categories.includes(selected.toLowerCase())
-        );
+        return selectedCategories.some((selected) => providerMatchesCategory(provider, selected));
       });
     }
 
@@ -210,9 +263,11 @@ export default function AllProf() {
   }, [searchTerm, selectedCategories, location, ratingFilter, availableOnly, sortBy]);
 
   const toggleCategory = (category: string) => {
-    setSelectedCategories((current) =>
-      current.includes(category) ? current.filter((item) => item !== category) : [...current, category]
-    );
+    const next = selectedCategories.includes(category)
+      ? selectedCategories.filter((item) => item !== category)
+      : [...selectedCategories, category];
+    setSelectedCategories(next);
+    updateUrlFilters({ category: next.length === 1 ? next[0] : null });
   };
 
   const toggleFavorite = (provider: Provider) => {
@@ -232,6 +287,7 @@ export default function AllProf() {
     setAvailableOnly(false);
     setSearchInput("");
     setSearchTerm("");
+    updateUrlFilters({ category: null, location: null, search: null, q: null });
   };
 
   const openProfile = (provider: Provider) => {
@@ -242,11 +298,11 @@ export default function AllProf() {
   const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSearchTerm(searchInput);
+    updateUrlFilters({ search: searchInput.trim() || null, q: null });
   };
 
   const countForCategory = (category: string) => {
-    const matching = professionals.filter((provider) => providerCategory(provider).toLowerCase() === category.toLowerCase());
-    return matching.length || CATEGORIES.find((item) => item.name === category)?.count || 0;
+    return professionals.filter((provider) => providerMatchesCategory(provider, category)).length;
   };
 
   const countForRating = (rating: number) =>
@@ -271,7 +327,7 @@ export default function AllProf() {
 
         <div className="relative z-10">
           <h1 className="text-3xl font-bold tracking-tight text-[#173b2d] sm:text-4xl">
-            All <span className="text-[#086342]">Professionals</span>
+            {selectedCategories.length === 1 ? selectedCategories[0] : "All"} <span className="text-[#086342]">Professionals</span>
           </h1>
           <p className="mt-1 text-sm text-slate-800 sm:text-base">
             Discover trusted and verified service professionals near you.
@@ -306,7 +362,10 @@ export default function AllProf() {
               <input
                 type="checkbox"
                 checked={selectedCategories.length === 0}
-                onChange={() => setSelectedCategories([])}
+                onChange={() => {
+                  setSelectedCategories([]);
+                  updateUrlFilters({ category: null });
+                }}
                 className="h-5 w-5 accent-emerald-700"
               />
               <span>All Categories</span>
@@ -335,9 +394,14 @@ export default function AllProf() {
               <select
                 aria-label="Location"
                 value={location}
-                onChange={(event) => setLocation(event.target.value)}
+                onChange={(event) => {
+                  const nextLocation = event.target.value;
+                  setLocation(nextLocation);
+                  updateUrlFilters({ location: nextLocation === "All Locations" ? null : nextLocation });
+                }}
                 className="w-full appearance-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
               >
+                {!LOCATIONS.includes(location) && <option value={location}>{location}</option>}
                 {LOCATIONS.map((item) => (
                   <option key={item}>{item}</option>
                 ))}
@@ -404,6 +468,7 @@ export default function AllProf() {
                   onClick={() => {
                     setSearchInput("");
                     setSearchTerm("");
+                    updateUrlFilters({ search: null, q: null });
                   }}
                   className="text-slate-400 hover:text-slate-700"
                 >
@@ -526,11 +591,6 @@ export default function AllProf() {
                         </div>
                       )}
 
-                      <div className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-emerald-50/95 px-2.5 py-1 text-[11px] font-bold text-emerald-800 shadow-sm">
-                        <ShieldCheck size={14} className="fill-emerald-700 text-white" />
-                        {verified ? "Verified" : "Professional"}
-                      </div>
-
                       <button
                         type="button"
                         onClick={() => toggleFavorite(provider)}
@@ -544,7 +604,17 @@ export default function AllProf() {
 
                     {/* Body */}
                     <div className="flex min-w-0 flex-1 flex-col p-3.5">
-                      <h3 className="truncate text-[15px] font-bold tracking-tight">{name}</h3>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <h3 className="truncate text-[15px] font-bold tracking-tight">{name}</h3>
+                        {verified && (
+                          <BadgeCheck
+                            size={19}
+                            className="shrink-0 fill-emerald-700 text-white"
+                            strokeWidth={2.5}
+                            aria-label="Verified professional"
+                          />
+                        )}
+                      </div>
 
                       <div className="mt-1.5 flex items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
