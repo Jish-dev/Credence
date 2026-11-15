@@ -2,6 +2,8 @@
 import type { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import Home from "../models/Home.js";
+import PassportAccessRequest from "../models/PassportAccessRequest.js";
+import Booking from "../models/Booking.js";
 
 // ========================================
 // CREATE HOME
@@ -151,6 +153,7 @@ export const getHomePassportQR = async (
 // DEACTIVATE HOME PASSPORT
 // ========================================
 
+
 export const deactivateHomePassport = async (
     req: Request,
     res: Response,
@@ -160,7 +163,7 @@ export const deactivateHomePassport = async (
         if (!req.user) {
             return res.status(401).json({
                 success: false,
-                message: "Authentication required",
+                message: "Please login first",
             });
         }
 
@@ -197,9 +200,113 @@ export const deactivateHomePassport = async (
             });
         }
 
+        // Revoke all active provider access requests for this home
+        await PassportAccessRequest.updateMany(
+            {
+                home: home._id,
+                status: "approved",
+            },
+            {
+                $set: {
+                    status: "revoked",
+                },
+            }
+        );
+
+        // Expire any pending OTP requests
+        await PassportAccessRequest.updateMany(
+            {
+                home: home._id,
+                status: "pending",
+            },
+            {
+                $set: {
+                    status: "expired",
+                },
+            }
+        );
+
         return res.status(200).json({
             success: true,
-            message: "Home passport deactivated successfully",
+            message: "Home Passport deactivated successfully. All provider access has been revoked.",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+// ========================================
+// DELETE DEACTIVATED HOME
+// ========================================
+
+export const deleteHome = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required",
+            });
+        }
+
+        const homeId = req.params.homeId;
+
+        if (
+            typeof homeId !== "string" ||
+            !mongoose.Types.ObjectId.isValid(homeId)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid home ID",
+            });
+        }
+
+        // Find only a deactivated home owned by this customer
+        const home = await Home.findOne({
+            _id: homeId,
+            owner: req.user.id,
+            isActive: false,
+        });
+
+        if (!home) {
+            return res.status(404).json({
+                success: false,
+                message: "Deactivated home not found",
+            });
+        }
+
+        // Preserve homes that have associated booking history
+        const existingBookings = await Booking.exists({
+            home: home._id,
+        });
+
+        if (existingBookings) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This home has service booking history and cannot be permanently deleted. You can keep it deactivated.",
+            });
+        }
+
+        // Remove associated passport access requests
+        await PassportAccessRequest.deleteMany({
+            home: home._id,
+        });
+
+        // Permanently delete the home
+        await Home.deleteOne({
+            _id: home._id,
+            owner: req.user.id,
+            isActive: false,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Home deleted successfully",
         });
     } catch (error) {
         next(error);

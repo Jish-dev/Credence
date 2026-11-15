@@ -184,6 +184,12 @@ export default function Navbar({ user, onLogout }: NavbarProps) {
     navigate("/my-bookings");
   };
 
+  const goToHomes = () => {
+    setMobileMenuOpen(false);
+    setProfileOpen(false);
+    navigate("/my-homes");
+  };
+
   const handleLogout = () => {
     setMobileMenuOpen(false);
     setProfileOpen(false);
@@ -351,6 +357,18 @@ export default function Navbar({ user, onLogout }: NavbarProps) {
                 >
                   <CalendarCheck size={17} aria-hidden="true" />
                   My Bookings
+                </button>
+              )}
+
+              {isCustomer && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={goToHomes}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-emerald-800"
+                >
+                  <CalendarCheck size={17} aria-hidden="true" />
+                  My Home
                 </button>
               )}
             </div>

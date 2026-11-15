@@ -6,6 +6,7 @@ import {
   getMyHomes,
   getHomePassportQR,
   deactivateHomePassport,
+  deleteHome,
 } from "../controllers/homeControl.js";
 
 import {
@@ -29,5 +30,8 @@ router.get("/:homeId/qr", getHomePassportQR);
 
 // Deactivate home passport
 router.patch("/:homeId/deactivate", deactivateHomePassport);
+
+// Permanently delete a deactivated home
+router.delete("/:homeId", deleteHome);
 
 export default router;

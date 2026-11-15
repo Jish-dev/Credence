@@ -22,6 +22,7 @@ import AllProf from "./pages/AllPro";
 import ScrollToTop from "./components/ScrollToTop";
 import Terms from "./pages/Terms";
 import About from "./pages/About";
+import MyHomes from "./pages/MyHomes";
 
 // ========================================
 // LOADING SCREEN
@@ -54,7 +55,7 @@ function AppLayout() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <ScrollToTop/>
+      <ScrollToTop />
       <Navbar user={user} onLogout={logout} />
 
       {/* Main page content */}
@@ -145,10 +146,14 @@ function AppLayout() {
             path="*"
             element={<Navigate to="/" replace />}
           />
-          <Route path="/service" element={<Services/>}/>
+          <Route path="/service" element={<Services />} />
           <Route path="/professionals" element={<AllProf />} />
-          <Route path="/terms-policy" element={<Terms/>}/>
-          <Route path="/about" element={<About/>} />
+          <Route path="/terms-policy" element={<Terms />} />
+          <Route path="/about" element={<About />} />
+          {/* Customer Home Passports */}
+          <Route
+            path="/my-homes" element={<MyHomes/>}
+          />
         </Routes>
       </main>
 
