@@ -1,20 +1,20 @@
-import mongoose, { Model, Schema } from "mongoose";
+
+import mongoose, { Model, Schema, Types } from "mongoose";
 
 export type PaymentStatus = "created" | "paid" | "failed" | "refunded";
 
 export interface IPayment {
-  customer: mongoose.Types.ObjectId;
-  booking: mongoose.Types.ObjectId;
+  _id: Types.ObjectId;
+  customer: Types.ObjectId;
+  booking: Types.ObjectId;
   razorpayPaymentId?: string;
   razorpayOrderId: string;
   razorpaySignature?: string;
-
   amount: number;
   currency: string;
   status: PaymentStatus;
   method?: string;
   failureReason?: string;
-
   signatureVerified: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -46,6 +46,7 @@ const paymentSchema = new Schema<IPayment>(
     amount: {
       type: Number,
       required: true,
+      min: 1,
     },
     currency: {
       type: String,
@@ -77,6 +78,15 @@ const paymentSchema = new Schema<IPayment>(
 
 paymentSchema.index({ customer: 1, createdAt: -1 });
 paymentSchema.index({ booking: 1, createdAt: -1 });
+
+// Prevent one Razorpay payment from being linked to multiple records.
+paymentSchema.index(
+  { razorpayPaymentId: 1 },
+  {
+    unique: true,
+    sparse: true,
+  }
+);
 
 const Payment: Model<IPayment> =
   (mongoose.models.Payment as Model<IPayment>) ||

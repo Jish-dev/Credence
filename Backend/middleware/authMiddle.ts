@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import User from "../models/User.js";
 
-type UserRole = "customer" | "admin" | "provider";
+type UserRole = "customer" | "provider" | "admin";
 
 interface TokenPayload extends JwtPayload {
   id: string;
@@ -59,11 +59,11 @@ export const protect = (
 
     if (
       typeof decoded.id !== "string" ||
-      !["customer", "admin", "provider"].includes(decoded.role)
+      !["customer", "provider", "admin"].includes(decoded.role)
     ) {
       return res.status(401).json({
         success: false,
-        message: "Invalid token payload",
+        message: "Invalid token",
       });
     }
 
@@ -109,30 +109,43 @@ export const customerOnly = (
   next();
 };
 
-// ========================================
-// ADMIN ONLY
-// ========================================
-
-export const adminOnly = (
+export const adminOnly = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      message: "Please login first",
-    });
-  }
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
 
-  if (req.user.role !== "admin") {
-    return res.status(403).json({
-      success: false,
-      message: "Admin access only",
-    });
-  }
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access required",
+      });
+    }
 
-  next();
+    const admin = await User.findOne({
+      _id: req.user.id,
+      role: "admin",
+      isActive: true,
+    });
+
+    if (!admin) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin account is inactive or unavailable",
+      });
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 };
 
 // ========================================
@@ -159,20 +172,17 @@ export const providerOnly = async (
       });
     }
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findOne({
+      _id: req.user.id,
+      role: "provider",
+      isActive: true,
+      providerApprovalStatus: "approved",
+    });
 
-    if (!user || !user.isActive) {
+    if (!user) {
       return res.status(403).json({
         success: false,
-        message: "Your account is unavailable",
-      });
-    }
-
-    if (user.providerApprovalStatus !== "approved") {
-      return res.status(403).json({
-        success: false,
-        message: "Your provider account is awaiting admin approval",
-        approvalStatus: user.providerApprovalStatus,
+        message: "Your provider account is unavailable or awaiting approval",
       });
     }
 
@@ -182,12 +192,11 @@ export const providerOnly = async (
   }
 };
 
-
 // ========================================
 // CUSTOMER OR APPROVED PROVIDER
 // ========================================
 
-export const customerOrApprovedProvider = (
+export const customerOrApprovedProvider = async (
   req: Request,
   res: Response,
   next: NextFunction

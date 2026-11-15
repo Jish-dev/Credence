@@ -6,9 +6,7 @@ import {
   getMyBookings,
   getMyBookingById,
   cancelMyBooking,
-  getAllBookings,
-  getAdminBookingById,
-  updateBookingStatus,
+  confirmServiceCompletion,
   getProviderBookings,
   getProviderBookingById,
   updateProviderBookingStatus,
@@ -17,7 +15,6 @@ import {
 import {
   protect,
   customerOnly,
-  adminOnly,
   providerOnly,
 } from "../middleware/authMiddle.js";
 
@@ -26,27 +23,44 @@ const router = Router();
 // All booking routes require login
 router.use(protect);
 
+// ========================================
 // CUSTOMER ROUTES
+// ========================================
+
+// Create booking
 router.post("/", customerOnly, createBooking);
 
+// Get all customer bookings
 router.get("/my", customerOnly, getMyBookings);
 
+// Get customer booking details
 router.get("/my/:id", customerOnly, getMyBookingById);
 
+// Cancel booking
 router.patch("/my/:id/cancel", customerOnly, cancelMyBooking);
 
-// ADMIN ROUTES
-router.get("/admin/all", adminOnly, getAllBookings);
+// Confirm service completion
+router.patch(
+  "/my/:id/confirm-completion",
+  customerOnly,
+  confirmServiceCompletion
+);
 
-router.get("/admin/:id", adminOnly, getAdminBookingById);
-
-router.patch("/admin/:id/status", adminOnly, updateBookingStatus);
-
+// ========================================
 // PROVIDER ROUTES
-router.get("/provider/my",providerOnly,getProviderBookings);
+// ========================================
 
-router.get("/provider/my/:id",providerOnly,getProviderBookingById);
+// Get provider bookings
+router.get("/provider/my", providerOnly, getProviderBookings);
 
-router.patch("/provider/:id/status",providerOnly,updateProviderBookingStatus);
+// Get provider booking details
+router.get("/provider/my/:id", providerOnly, getProviderBookingById);
+
+// Accept, reject, start or complete service
+router.patch(
+  "/provider/:id/status",
+  providerOnly,
+  updateProviderBookingStatus
+);
 
 export default router;

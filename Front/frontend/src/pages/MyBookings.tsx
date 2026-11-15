@@ -13,7 +13,6 @@ import {
   BriefcaseBusiness,
   CreditCard,
   Star,
-  MessageSquare,
   Send,
   CheckCircle2,
 } from "lucide-react";
@@ -27,6 +26,7 @@ type BookingStatus =
   | "pending"
   | "confirmed"
   | "in-progress"
+  | "awaiting_customer_confirmation"
   | "completed"
   | "cancelled"
   | "rejected";
@@ -85,9 +85,72 @@ interface MyReviewsResponse {
   reviews: Review[];
 }
 
+interface PaymentOrderResponse {
+  success: boolean;
+  message: string;
+  data: {
+    paymentId: string;
+    razorpayOrderId: string;
+    amount: number;
+    currency: string;
+    keyId: string;
+  };
+}
+
+interface RazorpayPaymentResponse {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayFailureResponse {
+  error?: {
+    code?: string;
+    description?: string;
+    reason?: string;
+    source?: string;
+    step?: string;
+    metadata?: {
+      order_id?: string;
+      payment_id?: string;
+    };
+  };
+}
+
+interface RazorpayOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  theme: {
+    color: string;
+  };
+  handler: (response: RazorpayPaymentResponse) => void;
+  modal: {
+    ondismiss: () => void;
+  };
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayOptions) => {
+      open: () => void;
+      on: (
+        event: "payment.failed",
+        callback: (response: RazorpayFailureResponse) => void
+      ) => void;
+    };
+  }
+}
+
 // ========================================
 // CONSTANTS
 // ========================================
+
+const RAZORPAY_SCRIPT_URL =
+  "https://checkout.razorpay.com/v1/checkout.js";
 
 const filters = [
   { label: "All Bookings", value: "all" },
@@ -99,6 +162,8 @@ const statusStyles: Record<BookingStatus, string> = {
   pending: "bg-amber-50 text-amber-700 border-amber-100",
   confirmed: "bg-blue-50 text-blue-700 border-blue-100",
   "in-progress": "bg-purple-50 text-purple-700 border-purple-100",
+  awaiting_customer_confirmation:
+    "bg-amber-50 text-amber-700 border-amber-100",
   completed: "bg-green-50 text-green-700 border-green-100",
   cancelled: "bg-gray-100 text-gray-600 border-gray-200",
   rejected: "bg-red-50 text-red-700 border-red-100",
@@ -123,12 +188,82 @@ const formatDate = (date: string) =>
   });
 
 const formatStatus = (status: string) =>
-  status.replace("-", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  status
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 
 const getBookingIdFromReview = (review: Review) =>
   typeof review.booking === "string"
     ? review.booking
     : review.booking?._id;
+
+// Extract useful backend error messages.
+const getErrorMessage = (
+  err: unknown,
+  fallback: string
+): string => {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "response" in err
+  ) {
+    const response = (
+      err as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      }
+    ).response;
+
+    if (response?.data?.message) {
+      return response.data.message;
+    }
+  }
+
+  if (err instanceof Error) {
+    return err.message;
+  }
+
+  return fallback;
+};
+
+// ========================================
+// RAZORPAY SCRIPT LOADER
+// ========================================
+
+let razorpayScriptPromise: Promise<boolean> | null = null;
+
+const loadRazorpayScript = (): Promise<boolean> => {
+  if (window.Razorpay) {
+    return Promise.resolve(true);
+  }
+
+  if (razorpayScriptPromise) {
+    return razorpayScriptPromise;
+  }
+
+  razorpayScriptPromise = new Promise((resolve) => {
+    const script = document.createElement("script");
+
+    script.src = RAZORPAY_SCRIPT_URL;
+    script.async = true;
+
+    script.onload = () => {
+      resolve(Boolean(window.Razorpay));
+    };
+
+    script.onerror = () => {
+      razorpayScriptPromise = null;
+      resolve(false);
+    };
+
+    document.body.appendChild(script);
+  });
+
+  return razorpayScriptPromise;
+};
 
 // ========================================
 // MAIN COMPONENT
@@ -146,18 +281,30 @@ export default function MyBookings() {
   const [total, setTotal] = useState(0);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+
   const [selectedBooking, setSelectedBooking] =
     useState<Booking | null>(null);
+
+  // Payment state
+  const [payingBookingId, setPayingBookingId] = useState<string | null>(
+    null
+  );
+
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentSuccess, setPaymentSuccess] = useState("");
 
   // Review state
   const [reviewedBookingIds, setReviewedBookingIds] = useState<Set<string>>(
     new Set()
   );
+
   const [reviewLoading, setReviewLoading] = useState(true);
   const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
+
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState("");
+
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewError, setReviewError] = useState("");
   const [reviewSuccess, setReviewSuccess] = useState("");
@@ -189,9 +336,7 @@ export default function MyBookings() {
       setPages(response.data.pagination?.pages || 1);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load your bookings."
+        getErrorMessage(err, "Unable to load your bookings.")
       );
     } finally {
       setLoading(false);
@@ -263,9 +408,7 @@ export default function MyBookings() {
       await fetchBookings();
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to cancel booking."
+        getErrorMessage(err, "Unable to cancel booking.")
       );
     } finally {
       setCancellingId(null);
@@ -274,6 +417,290 @@ export default function MyBookings() {
 
   const canCancel = (status: BookingStatus) =>
     status === "pending" || status === "confirmed";
+
+  // ========================================
+  // RAZORPAY PAYMENT
+  // ========================================
+
+  const handlePayment = async (booking: Booking) => {
+    if (payingBookingId) return;
+
+    if (booking.status !== "completed") {
+      setPaymentError(
+        "Payment is available only after the service is completed."
+      );
+      return;
+    }
+
+    if (booking.paymentStatus === "paid") {
+      setPaymentError("This booking has already been paid.");
+      return;
+    }
+
+    if (
+      typeof booking.amount !== "number" ||
+      !Number.isFinite(booking.amount) ||
+      booking.amount <= 0
+    ) {
+      setPaymentError("A valid booking amount is not available.");
+      return;
+    }
+
+    try {
+      setPayingBookingId(booking._id);
+      setPaymentError("");
+      setPaymentSuccess("");
+      setError("");
+
+      // ------------------------------------
+      // STEP 1: LOAD RAZORPAY
+      // ------------------------------------
+
+      const scriptLoaded = await loadRazorpayScript();
+
+      if (!scriptLoaded || !window.Razorpay) {
+        throw new Error(
+          "Unable to load Razorpay Checkout. Please refresh and try again."
+        );
+      }
+
+      // ------------------------------------
+      // STEP 2: CREATE PAYMENT ORDER
+      // ------------------------------------
+
+      const orderResponse = await api.post<PaymentOrderResponse>(
+        "/payments/create-order",
+        {
+          bookingId: booking._id,
+        }
+      );
+
+      const order = orderResponse.data?.data;
+
+      if (!order) {
+        throw new Error(
+          "Payment order was not returned by the server."
+        );
+      }
+
+      // ------------------------------------
+      // STEP 3: VALIDATE ORDER
+      // ------------------------------------
+
+      const expectedAmount = Math.round(booking.amount * 100);
+
+      const validOrderId =
+        typeof order.razorpayOrderId === "string" &&
+        /^order_[A-Za-z0-9]+$/.test(order.razorpayOrderId);
+
+      const validTestKey =
+        typeof order.keyId === "string" &&
+        /^rzp_test_[A-Za-z0-9]+$/.test(order.keyId);
+
+      const validAmount =
+        typeof order.amount === "number" &&
+        Number.isSafeInteger(order.amount) &&
+        order.amount > 0;
+
+      const validCurrency = order.currency === "INR";
+
+      if (!validOrderId) {
+        throw new Error("Invalid Razorpay order ID received from backend.");
+      }
+
+      if (!validTestKey) {
+        console.error("Invalid Razorpay Test Mode key:", {
+          keyPrefix: order.keyId?.slice(0, 9),
+        });
+
+        throw new Error(
+          "Razorpay Test Mode key is missing or invalid. Check backend configuration."
+        );
+      }
+
+      if (!validAmount || !validCurrency) {
+        throw new Error(
+          "Invalid Razorpay amount or currency received from backend."
+        );
+      }
+
+      // booking.amount is in rupees.
+      // Razorpay order.amount is in paise.
+
+      if (order.amount !== expectedAmount) {
+        console.error("CREDENCE AMOUNT MISMATCH:", {
+          bookingAmountInRupees: booking.amount,
+          expectedAmountInPaise: expectedAmount,
+          razorpayAmount: order.amount,
+        });
+
+        throw new Error(
+          "Payment amount does not match the booking amount."
+        );
+      }
+
+      // ------------------------------------
+      // STEP 4: DIAGNOSTIC LOG
+      // ------------------------------------
+
+      console.log("========== CREDENCE RAZORPAY CHECKOUT ==========");
+
+      console.log({
+        bookingId: booking._id,
+        bookingAmount: booking.amount,
+        expectedAmountInPaise: expectedAmount,
+        razorpayOrderId: order.razorpayOrderId,
+        razorpayAmount: order.amount,
+        currency: order.currency,
+        keyPrefix: order.keyId.slice(0, 9),
+        mode: "TEST",
+      });
+
+      console.log("================================================");
+
+      // ------------------------------------
+      // STEP 5: INITIALIZE CHECKOUT
+      // ------------------------------------
+
+      const checkoutOptions: RazorpayOptions = {
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "CREDENCE",
+        description: `Payment for ${booking.serviceName}`,
+        order_id: order.razorpayOrderId,
+
+        theme: {
+          color: "#244b3b",
+        },
+
+        // --------------------------------
+        // STEP 6: PAYMENT SUCCESS
+        // --------------------------------
+
+        handler: async (paymentResponse) => {
+          try {
+            console.log("CREDENCE RAZORPAY SUCCESS RESPONSE:", {
+              orderId: paymentResponse.razorpay_order_id,
+              paymentId: paymentResponse.razorpay_payment_id,
+            });
+
+            // Ensure Checkout returned the expected order.
+            if (
+              paymentResponse.razorpay_order_id !==
+              order.razorpayOrderId
+            ) {
+              throw new Error(
+                "Payment order ID mismatch. Please contact support."
+              );
+            }
+
+            const verifyResponse = await api.post(
+              "/payments/verify-payment",
+              {
+                razorpay_order_id:
+                  paymentResponse.razorpay_order_id,
+
+                razorpay_payment_id:
+                  paymentResponse.razorpay_payment_id,
+
+                razorpay_signature:
+                  paymentResponse.razorpay_signature,
+              }
+            );
+
+            if (verifyResponse.data?.success !== true) {
+              throw new Error(
+                verifyResponse.data?.message ||
+                "Payment verification failed."
+              );
+            }
+
+            setPaymentError("");
+
+            setPaymentSuccess(
+              "Payment successful! Your booking has been paid."
+            );
+
+            setSelectedBooking(null);
+
+            await fetchBookings();
+          } catch (err) {
+            console.error(
+              "CREDENCE PAYMENT VERIFICATION ERROR:",
+              err
+            );
+
+            setPaymentError(
+              getErrorMessage(
+                err,
+                "Payment verification failed. Please contact support before trying again."
+              )
+            );
+          } finally {
+            setPayingBookingId(null);
+          }
+        },
+
+        // --------------------------------
+        // STEP 7: CHECKOUT DISMISSED
+        // --------------------------------
+
+        modal: {
+          ondismiss: () => {
+            setPayingBookingId(null);
+          },
+        },
+      };
+
+      // ------------------------------------
+      // STEP 8: OPEN CHECKOUT
+      // ------------------------------------
+
+      const checkout = new window.Razorpay(checkoutOptions);
+
+      // ------------------------------------
+      // STEP 9: PAYMENT FAILURE
+      // ------------------------------------
+
+      checkout.on("payment.failed", (response) => {
+        const failure = response.error;
+
+        console.error("========== RAZORPAY PAYMENT FAILED ==========");
+
+        console.error({
+          code: failure?.code,
+          description: failure?.description,
+          reason: failure?.reason,
+          source: failure?.source,
+          step: failure?.step,
+          orderId: failure?.metadata?.order_id,
+        });
+
+        console.error("==============================================");
+
+        setPaymentError(
+          failure?.description ||
+          "Payment failed. Please try again."
+        );
+
+        setPayingBookingId(null);
+      });
+
+      checkout.open();
+    } catch (err) {
+      console.error("CREDENCE PAYMENT INITIALIZATION ERROR:", err);
+
+      setPaymentError(
+        getErrorMessage(
+          err,
+          "Unable to start payment. Please try again."
+        )
+      );
+
+      setPayingBookingId(null);
+    }
+  };
 
   // ========================================
   // OPEN REVIEW FORM
@@ -333,9 +760,11 @@ export default function MyBookings() {
         return updated;
       });
 
-      setReviewSuccess("Your review has been submitted successfully!");
+      setReviewSuccess(
+        "Your review has been submitted successfully!"
+      );
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         setReviewBooking(null);
         setReviewSuccess("");
         setRating(0);
@@ -343,9 +772,7 @@ export default function MyBookings() {
       }, 1200);
     } catch (err) {
       setReviewError(
-        err instanceof Error
-          ? err.message
-          : "Unable to submit your review. Please try again."
+        getErrorMessage(err, "Unable to submit your review. Please try again.")
       );
     } finally {
       setSubmittingReview(false);
@@ -438,11 +865,10 @@ export default function MyBookings() {
               <button
                 key={filter.value}
                 onClick={() => changeFilter(filter.value)}
-                className={`shrink-0 rounded-full px-5 py-2.5 text-sm font-semibold transition ${
-                  activeFilter === filter.value
-                    ? "bg-[#244b3b] text-white"
-                    : "border border-gray-200 bg-white text-gray-600 hover:border-[#315f4c] hover:text-[#315f4c]"
-                }`}
+                className={`shrink-0 rounded-full px-5 py-2.5 text-sm font-semibold transition ${activeFilter === filter.value
+                  ? "bg-[#244b3b] text-white"
+                  : "border border-gray-200 bg-white text-gray-600 hover:border-[#315f4c] hover:text-[#315f4c]"
+                  }`}
               >
                 {filter.label}
               </button>
@@ -450,13 +876,40 @@ export default function MyBookings() {
           </div>
         </div>
 
-        {/* ERROR */}
+        {/* GENERAL ERROR */}
 
         {error && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
             <span>{error}</span>
 
             <button onClick={() => setError("")}>
+              <X size={17} />
+            </button>
+          </div>
+        )}
+
+        {/* PAYMENT ERROR */}
+
+        {paymentError && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <span>{paymentError}</span>
+
+            <button onClick={() => setPaymentError("")}>
+              <X size={17} />
+            </button>
+          </div>
+        )}
+
+        {/* PAYMENT SUCCESS */}
+
+        {paymentSuccess && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 size={18} />
+              {paymentSuccess}
+            </span>
+
+            <button onClick={() => setPaymentSuccess("")}>
               <X size={17} />
             </button>
           </div>
@@ -504,10 +957,15 @@ export default function MyBookings() {
             bookings.map((booking) => {
               const provider = booking.provider;
               const isReviewed = reviewedBookingIds.has(booking._id);
+
               const canReview =
                 booking.status === "completed" &&
                 !isReviewed &&
                 !reviewLoading;
+
+              const canPay =
+                booking.status === "completed" &&
+                booking.paymentStatus !== "paid";
 
               return (
                 <article
@@ -546,9 +1004,8 @@ export default function MyBookings() {
                     </div>
 
                     <span
-                      className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                        statusStyles[booking.status]
-                      }`}
+                      className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${statusStyles[booking.status]
+                        }`}
                     >
                       {formatStatus(booking.status)}
                     </span>
@@ -616,9 +1073,8 @@ export default function MyBookings() {
 
                       {booking.paymentStatus && (
                         <span
-                          className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            paymentStyles[booking.paymentStatus]
-                          }`}
+                          className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${paymentStyles[booking.paymentStatus]
+                            }`}
                         >
                           <CreditCard size={12} />
                           Payment: {formatStatus(booking.paymentStatus)}
@@ -627,6 +1083,27 @@ export default function MyBookings() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+
+                      {/* PAY NOW */}
+
+                      {canPay && (
+                        <button
+                          onClick={() => handlePayment(booking)}
+                          disabled={payingBookingId !== null}
+                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {payingBookingId === booking._id ? (
+                            <RefreshCw size={16} className="animate-spin" />
+                          ) : (
+                            <CreditCard size={16} />
+                          )}
+
+                          {payingBookingId === booking._id
+                            ? "Processing..."
+                            : "Pay Now"}
+                        </button>
+                      )}
+
                       <button
                         onClick={() => setSelectedBooking(booking)}
                         className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
@@ -795,11 +1272,32 @@ export default function MyBookings() {
                 )}
               </div>
 
+              {/* PAY NOW IN MODAL */}
+
+              {selectedBooking.status === "completed" &&
+                selectedBooking.paymentStatus !== "paid" && (
+                  <button
+                    onClick={() => handlePayment(selectedBooking)}
+                    disabled={payingBookingId !== null}
+                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {payingBookingId === selectedBooking._id ? (
+                      <RefreshCw size={17} className="animate-spin" />
+                    ) : (
+                      <CreditCard size={17} />
+                    )}
+
+                    {payingBookingId === selectedBooking._id
+                      ? "Processing Payment..."
+                      : "Pay Now"}
+                  </button>
+                )}
+
               {selectedBooking.status === "completed" &&
                 !reviewedBookingIds.has(selectedBooking._id) && (
                   <button
                     onClick={() => openReviewForm(selectedBooking)}
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#244b3b] py-3 text-sm font-semibold text-white hover:bg-[#193c2e]"
+                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#244b3b] py-3 text-sm font-semibold text-white hover:bg-[#193c2e]"
                   >
                     <Star size={17} />
                     Write a Review

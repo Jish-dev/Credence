@@ -10,7 +10,6 @@ import {
   Phone,
   ClipboardList,
   CheckCircle2,
-  CreditCard,
 } from "lucide-react";
 import { api } from "../api";
 
@@ -26,25 +25,16 @@ interface Provider {
   area?: string;
 }
 
+type BookingType = "on_demand" | "pre_booking";
+
 interface BookingForm {
+  bookingType: BookingType;
   serviceName: string;
   bookingDate: string;
   bookingTime: string;
   location: string;
   contactPhone: string;
   description: string;
-}
-
-interface RazorpayPaymentResponse {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-}
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
 }
 
 // ========================================
@@ -62,17 +52,6 @@ const getToday = () => {
 };
 
 // Get the current time in India Standard Time.
-const getCurrentISTTime = () => {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kolkata",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date());
-};
-
-// Calculate the earliest allowed time.
-// Booking must be at least 30 minutes ahead.
 const getMinimumBookingTime = (bookingDate: string) => {
   if (!bookingDate || bookingDate !== getToday()) {
     return undefined;
@@ -109,25 +88,6 @@ const isBookingTimeValid = (
   );
 };
 
-// Load Razorpay Checkout.
-const loadRazorpayScript = (): Promise<boolean> => {
-  return new Promise((resolve) => {
-    if (window.Razorpay) {
-      resolve(true);
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-
-    script.onload = () => resolve(!!window.Razorpay);
-    script.onerror = () => resolve(false);
-
-    document.body.appendChild(script);
-  });
-};
-
 export default function Booking() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -146,13 +106,8 @@ export default function Booking() {
     null
   );
 
-  // Keep the captured Razorpay response so verification can be retried
-  // without creating another order or charging the customer again.
-  const [pendingPaymentResponse, setPendingPaymentResponse] =
-    useState<RazorpayPaymentResponse | null>(null);
-  const [paymentCaptured, setPaymentCaptured] = useState(false);
-
   const [form, setForm] = useState<BookingForm>({
+    bookingType: "on_demand",
     serviceName: "",
     bookingDate: "",
     bookingTime: "",
@@ -240,146 +195,7 @@ export default function Booking() {
   };
 
   // ========================================
-  // PAYMENT VERIFICATION
-  // ========================================
-
-  const verifyPayment = async (
-    paymentResponse: RazorpayPaymentResponse
-  ) => {
-    // A successful Razorpay checkout callback means the customer has
-    // completed the payment flow. Do not create another payment order
-    // while this payment is waiting for backend verification.
-    setPendingPaymentResponse(paymentResponse);
-    setPaymentCaptured(true);
-
-    try {
-      console.log("RAZORPAY CALLBACK RECEIVED:", paymentResponse);
-      console.log("CALLING BACKEND PAYMENT VERIFICATION...");
-
-      if (
-        !paymentResponse?.razorpay_order_id ||
-        !paymentResponse?.razorpay_payment_id ||
-        !paymentResponse?.razorpay_signature
-      ) {
-        throw new Error("Razorpay returned incomplete payment details.");
-      }
-
-      const response = await api.post(
-        "/payments/verify-payment",
-        {
-          razorpay_order_id: paymentResponse.razorpay_order_id,
-          razorpay_payment_id: paymentResponse.razorpay_payment_id,
-          razorpay_signature: paymentResponse.razorpay_signature,
-        }
-      );
-
-      console.log("BACKEND VERIFICATION RESPONSE:", response.data);
-
-      if (response.data?.success === false) {
-        throw new Error(
-          response.data?.message || "The backend could not verify this payment."
-        );
-      }
-
-      setPendingPaymentResponse(null);
-      setPaymentCaptured(false);
-      setError("");
-      setSuccess(
-        "Your payment has been verified successfully. You can now track your booking."
-      );
-    } catch (err: any) {
-      const backendError =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Unknown verification error";
-
-      console.error(
-        "PAYMENT VERIFICATION ERROR:",
-        err?.response?.data || err
-      );
-
-      setError(
-        `Razorpay has returned the payment response, but Credence could not verify it yet. Do not pay again. Use “Retry Verification” below. Details: ${backendError}`
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // ========================================
-  // CREATE ORDER AND OPEN CHECKOUT
-  // ========================================
-
-  const openPaymentCheckout = async (bookingId: string) => {
-    const scriptLoaded = await loadRazorpayScript();
-
-    if (!scriptLoaded) {
-      throw new Error(
-        "Unable to load Razorpay Checkout. Please check your internet connection."
-      );
-    }
-
-    const orderResponse = await api.post("/payments/create-order", {
-      bookingId,
-    });
-
-    const order = orderResponse.data?.data;
-
-    if (!order?.razorpayOrderId || !order?.keyId) {
-      throw new Error("Unable to create Razorpay payment order.");
-    }
-
-    if (!window.Razorpay) {
-      throw new Error("Razorpay Checkout is unavailable.");
-    }
-
-    const options = {
-      key: order.keyId,
-      amount: order.amount,
-      currency: order.currency,
-      name: "CREDENCE",
-      description: `Service booking - ${
-        provider?.title || provider?.category || provider?.name
-      }`,
-      order_id: order.razorpayOrderId,
-
-      theme: {
-        color: "#047857",
-      },
-
-      handler: async (response: RazorpayPaymentResponse) => {
-        await verifyPayment(response);
-      },
-
-      modal: {
-        ondismiss: () => {
-          setError(
-            "Payment was not completed. Your booking is saved. You can retry payment."
-          );
-          setSubmitting(false);
-        },
-      },
-    };
-
-    const checkout = new window.Razorpay(options);
-
-    checkout.on("payment.failed", (response: any) => {
-      console.error("RAZORPAY PAYMENT FAILED:", response);
-
-      setError(
-        response?.error?.description ||
-          "Payment failed. Please try again."
-      );
-
-      setSubmitting(false);
-    });
-
-    checkout.open();
-  };
-
-  // ========================================
-  // BOOKING + PAYMENT SUBMISSION
+  // BOOKING SUBMISSION
   // ========================================
 
   const handleSubmit = async (
@@ -395,58 +211,85 @@ export default function Booking() {
       return;
     }
 
-    if (!form.bookingDate || !form.bookingTime) {
-      setError("Please select your preferred booking date and time.");
+    if (createdBookingId) {
+      setError("Your booking has already been submitted.");
       return;
     }
 
-    // Frontend validation: minimum 30 minutes in advance.
-    if (!isBookingTimeValid(form.bookingDate, form.bookingTime)) {
-      setError(
-        "Please choose a booking time at least 30 minutes from now."
-      );
+    if (form.bookingType === "pre_booking") {
+      if (!form.bookingDate || !form.bookingTime) {
+        setError(
+          "Please select your preferred pre-booking date and time."
+        );
+        return;
+      }
+
+      if (!isBookingTimeValid(form.bookingDate, form.bookingTime)) {
+        setError(
+          "Please choose a pre-booking time at least 30 minutes from now."
+        );
+        return;
+      }
+    }
+
+    if (!form.location.trim()) {
+      setError("Please enter your service location.");
+      return;
+    }
+
+    if (!form.contactPhone.trim()) {
+      setError("Please enter your contact phone number.");
       return;
     }
 
     try {
       setSubmitting(true);
 
-      let bookingId: string;
+      const payload = {
+        providerId: provider._id,
+        bookingType: form.bookingType,
+        bookingDate:
+          form.bookingType === "pre_booking"
+            ? form.bookingDate
+            : null,
+        bookingTime:
+          form.bookingType === "pre_booking"
+            ? form.bookingTime
+            : "",
+        location: form.location.trim(),
+        contactPhone: form.contactPhone.trim(),
+        description: form.description.trim(),
+      };
 
-      // Create booking only once.
-      if (createdBookingId) {
-        bookingId = createdBookingId;
-      } else {
-        const payload = {
-          providerId: provider._id,
-          bookingDate: form.bookingDate,
-          bookingTime: form.bookingTime,
-          location: form.location.trim(),
-          contactPhone: form.contactPhone.trim(),
-          description: form.description.trim(),
-        };
+      console.log("CREDENCE BOOKING REQUEST:", payload);
 
-        const bookingResponse = await api.post("/bookings", payload);
-        const booking = bookingResponse.data?.booking;
+      const response = await api.post("/bookings", payload);
 
-        if (!booking?._id) {
-          throw new Error("Booking could not be created.");
-        }
+      const booking =
+        response.data?.booking ??
+        response.data?.data?.booking ??
+        response.data?.data;
 
-        bookingId = booking._id;
-        setCreatedBookingId(bookingId);
+      if (!booking?._id) {
+        throw new Error("Booking could not be created.");
       }
 
-      await openPaymentCheckout(bookingId);
-    } catch (err) {
-      console.error("BOOKING / PAYMENT ERROR:", err);
+      setCreatedBookingId(booking._id);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to process your booking or payment. Please try again."
+      setSuccess(
+        "Your booking request has been submitted successfully. You can track its status in My Bookings. Payment will be available after the service is completed."
       );
 
+      console.log("CREDENCE BOOKING CREATED:", booking);
+    } catch (err: any) {
+      console.error("CREDENCE BOOKING ERROR:", err?.response?.data || err);
+
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Unable to process your booking. Please try again."
+      );
+    } finally {
       setSubmitting(false);
     }
   };
@@ -497,7 +340,7 @@ export default function Booking() {
   }
 
   // ========================================
-  // PAYMENT SUCCESS SCREEN
+  // BOOKING SUCCESS SCREEN
   // ========================================
 
   if (success) {
@@ -510,15 +353,15 @@ export default function Booking() {
           />
 
           <h1 className="mt-4 text-2xl font-extrabold text-slate-900">
-            Payment successful!
+            Booking submitted!
           </h1>
 
-          <p className="mt-2 text-sm leading-6 text-slate-600">
+          <p className="mt-3 text-sm leading-6 text-slate-600">
             {success}
           </p>
 
           <p className="mt-3 text-sm text-slate-500">
-            Your booking with {provider.name} has been saved.
+            Selected professional: {provider.name}
           </p>
 
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
@@ -526,7 +369,7 @@ export default function Booking() {
               onClick={() => navigate("/my-bookings")}
               className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800"
             >
-              View My Bookings
+              Track My Booking
             </button>
 
             <button
@@ -584,14 +427,6 @@ export default function Booking() {
               </div>
             )}
 
-            {createdBookingId && (
-              <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                {paymentCaptured
-                  ? "Your payment response has been received and is awaiting verification. Do not make another payment."
-                  : "Your booking is saved. Complete the payment or retry it below."}
-              </div>
-            )}
-
             <form onSubmit={handleSubmit} className="mt-7 space-y-5">
               {/* SERVICE */}
 
@@ -615,62 +450,127 @@ export default function Booking() {
                 />
               </div>
 
-              {/* DATE AND TIME */}
+              {/* BOOKING TYPE */}
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="bookingDate"
-                    className="flex items-center gap-2 text-sm font-semibold text-slate-700"
-                  >
-                    <CalendarDays size={16} className="text-emerald-700" />
-                    Preferred date
-                  </label>
+              <div>
+                <p className="text-sm font-semibold text-slate-700">
+                  Choose booking type
+                </p>
 
-                  <input
-                    id="bookingDate"
-                    type="date"
-                    min={getToday()}
-                    value={form.bookingDate}
-                    onChange={(event) => {
-                      updateField("bookingDate", event.target.value);
-                      updateField("bookingTime", "");
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((current) => ({
+                        ...current,
+                        bookingType: "on_demand",
+                        bookingDate: "",
+                        bookingTime: "",
+                      }));
                       setError("");
                     }}
-                    className={inputClass}
-                    required
-                    disabled={!!createdBookingId}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="bookingTime"
-                    className="flex items-center gap-2 text-sm font-semibold text-slate-700"
+                    aria-pressed={form.bookingType === "on_demand"}
+                    className={`rounded-2xl border p-4 text-left transition ${
+                      form.bookingType === "on_demand"
+                        ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-100"
+                        : "border-slate-200 bg-white hover:border-emerald-300"
+                    }`}
                   >
-                    <Clock size={16} className="text-emerald-700" />
-                    Preferred time
-                  </label>
+                    <span className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                      <Clock size={17} className="text-emerald-700" />
+                      Book Now
+                    </span>
 
-                  <input
-                    id="bookingTime"
-                    type="time"
-                    min={getMinimumBookingTime(form.bookingDate)}
-                    value={form.bookingTime}
-                    onChange={(event) => {
-                      updateField("bookingTime", event.target.value);
+                    <span className="mt-2 block text-xs leading-5 text-slate-500">
+                      Request the service immediately. Our admin team will check availability and confirm.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((current) => ({
+                        ...current,
+                        bookingType: "pre_booking",
+                      }));
                       setError("");
                     }}
-                    className={inputClass}
-                    required
-                    disabled={!form.bookingDate || !!createdBookingId}
-                  />
+                    aria-pressed={form.bookingType === "pre_booking"}
+                    className={`rounded-2xl border p-4 text-left transition ${
+                      form.bookingType === "pre_booking"
+                        ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-100"
+                        : "border-slate-200 bg-white hover:border-emerald-300"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                      <CalendarDays size={17} className="text-emerald-700" />
+                      Pre-booking
+                    </span>
 
-                  <p className="mt-2 text-xs text-slate-500">
-                    Book at least 30 minutes in advance.
-                  </p>
+                    <span className="mt-2 block text-xs leading-5 text-slate-500">
+                      Choose a preferred future date and time for your service.
+                    </span>
+                  </button>
                 </div>
               </div>
+
+              {/* PRE-BOOKING DATE AND TIME */}
+
+              {form.bookingType === "pre_booking" && (
+                <div className="grid gap-5 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="bookingDate"
+                      className="flex items-center gap-2 text-sm font-semibold text-slate-700"
+                    >
+                      <CalendarDays size={16} className="text-emerald-700" />
+                      Preferred date
+                    </label>
+
+                    <input
+                      id="bookingDate"
+                      type="date"
+                      min={getToday()}
+                      value={form.bookingDate}
+                      onChange={(event) => {
+                        updateField("bookingDate", event.target.value);
+                        updateField("bookingTime", "");
+                        setError("");
+                      }}
+                      className={inputClass}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="bookingTime"
+                      className="flex items-center gap-2 text-sm font-semibold text-slate-700"
+                    >
+                      <Clock size={16} className="text-emerald-700" />
+                      Preferred time
+                    </label>
+
+                    <input
+                      id="bookingTime"
+                      type="time"
+                      min={getMinimumBookingTime(form.bookingDate)}
+                      value={form.bookingTime}
+                      onChange={(event) => {
+                        updateField("bookingTime", event.target.value);
+                        setError("");
+                      }}
+                      className={inputClass}
+                      required
+                      disabled={!form.bookingDate}
+                    />
+
+                    <p className="mt-2 text-xs text-slate-500">
+                      Select a time at least 30 minutes from now.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* LOCATION */}
 
@@ -692,7 +592,6 @@ export default function Booking() {
                   placeholder="Enter your full service address"
                   className={inputClass}
                   required
-                  disabled={!!createdBookingId}
                 />
               </div>
 
@@ -717,7 +616,6 @@ export default function Booking() {
                   placeholder="Enter your phone number"
                   className={inputClass}
                   required
-                  disabled={!!createdBookingId}
                 />
               </div>
 
@@ -741,43 +639,21 @@ export default function Booking() {
                   placeholder="Tell us briefly what service you need..."
                   rows={4}
                   className={inputClass}
-                  disabled={!!createdBookingId}
                 />
               </div>
 
-              {/* PAYMENT BUTTON */}
+              {/* SUBMIT BOOKING */}
 
-              {paymentCaptured && pendingPaymentResponse ? (
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={async () => {
-                    setError("");
-                    setSubmitting(true);
-                    await verifyPayment(pendingPaymentResponse);
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <CreditCard size={18} />
-                  {submitting ? "Verifying..." : "Retry Verification"}
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <CreditCard size={18} />
-                  {submitting
-                    ? "Processing..."
-                    : createdBookingId
-                      ? "Retry Payment"
-                      : "Continue to Payment"}
-                </button>
-              )}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? "Submitting Booking..." : "Confirm Booking"}
+              </button>
 
               <p className="text-center text-xs text-slate-400">
-                Secure payment powered by Razorpay.
+                No payment required now. Pay securely after service completion.
               </p>
             </form>
           </section>
@@ -839,7 +715,7 @@ export default function Booking() {
             </div>
 
             <p className="mt-4 px-2 text-center text-xs leading-5 text-emerald-800">
-              Your payment amount is calculated securely using the saved service price.
+              Your booking will be submitted first. Payment becomes available after the service is completed.
             </p>
           </aside>
         </div>

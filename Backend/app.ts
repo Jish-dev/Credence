@@ -21,6 +21,8 @@ import paymentRoutes from "./routes/paymentRoute.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import providerAuthRoutes from "./routes/providerAuthRoutes.js";
 import orinRoutes from "./routes/orinroutes.js";
+import homeRoutes from "./routes/homeRoutes.js";
+import passportRoutes from "./routes/passportRoutes.js";
 
 // ========================================
 // CONTROLLERS
@@ -159,6 +161,8 @@ app.use("/api/v1/admin/upload", uploadRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/provider-auth", providerAuthRoutes);
 app.use("/api/v1/orin", orinRoutes);
+app.use("/api/v1/homes", homeRoutes);
+app.use("/api/v1/passport", passportRoutes);
 // ========================================
 // 404 HANDLER
 // ========================================

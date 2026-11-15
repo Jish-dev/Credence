@@ -1,5 +1,7 @@
 import mongoose, { Model, Schema } from "mongoose";
 
+export type BookingType = "on_demand" | "pre_booking";
+
 export type BookingStatus =
   | "pending"
   | "confirmed"
@@ -17,11 +19,14 @@ export type BookingPaymentStatus =
 export interface IBooking {
   customer: mongoose.Types.ObjectId;
   provider: mongoose.Types.ObjectId;
+  home?: mongoose.Types.ObjectId | null;
+
+  bookingType: BookingType;
 
   serviceName: string;
   description: string;
 
-  bookingDate: Date;
+  bookingDate: Date | null;
   bookingTime: string;
 
   location: string;
@@ -30,11 +35,14 @@ export interface IBooking {
 
   status: BookingStatus;
 
+  providerCompletedAt: Date | null;
+  customerConfirmedAt: Date | null;
+
   paymentStatus: BookingPaymentStatus;
   paymentId: mongoose.Types.ObjectId | null;
   paidAt: Date | null;
 
-  adminNote: string;
+  providerNote: string;
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -54,6 +62,13 @@ const bookingSchema = new Schema<IBooking>(
       required: true,
     },
 
+    bookingType: {
+      type: String,
+      enum: ["on_demand", "pre_booking"],
+      default: "pre_booking",
+      required: true,
+    },
+
     serviceName: {
       type: String,
       required: true,
@@ -69,13 +84,19 @@ const bookingSchema = new Schema<IBooking>(
 
     bookingDate: {
       type: Date,
-      required: true,
+      default: null,
+      required: function (this: IBooking) {
+        return this.bookingType === "pre_booking";
+      },
     },
 
     bookingTime: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
+      required: function (this: IBooking) {
+        return this.bookingType === "pre_booking";
+      },
     },
 
     location: {
@@ -110,6 +131,16 @@ const bookingSchema = new Schema<IBooking>(
       index: true,
     },
 
+    providerCompletedAt: {
+      type: Date,
+      default: null,
+    },
+
+    customerConfirmedAt: {
+      type: Date,
+      default: null,
+    },
+
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed", "refunded"],
@@ -128,11 +159,18 @@ const bookingSchema = new Schema<IBooking>(
       default: null,
     },
 
-    adminNote: {
+    providerNote: {
       type: String,
       trim: true,
       default: "",
       maxlength: 1000,
+    },
+
+    home: {
+      type: Schema.Types.ObjectId,
+      ref: "Home",
+      default: null,
+      index: true,
     },
   },
   {
@@ -144,7 +182,7 @@ bookingSchema.index({ customer: 1, createdAt: -1 });
 bookingSchema.index({ provider: 1, bookingDate: 1 });
 bookingSchema.index({ status: 1, bookingDate: 1 });
 bookingSchema.index({ paymentStatus: 1, createdAt: -1 });
-
+bookingSchema.index({ provider: 1, status: 1, createdAt: -1 });
 const Booking: Model<IBooking> =
   (mongoose.models.Booking as Model<IBooking>) ||
   mongoose.model<IBooking>("Booking", bookingSchema);
