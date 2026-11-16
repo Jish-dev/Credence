@@ -116,6 +116,20 @@ app.get("/api/v1/health", (_req: Request, res: Response) => {
 });
 
 // ========================================
+// ROOT ROUTE
+// ========================================
+
+app.get("/", (_req: Request, res: Response) => {
+  return res.status(200).json({
+    success: true,
+    name: "CREDENCE API",
+    message: "Welcome to CREDENCE Backend",
+    status: "Operational",
+    health: "/api/v1/health",
+    timestamp: new Date().toISOString(),
+  });
+});
+// ========================================
 // AUTHENTICATION
 // ========================================
 
