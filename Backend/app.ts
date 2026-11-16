@@ -47,9 +47,9 @@ const allowedOrigins = [
   "http://localhost:5175",
   "http://localhost:5176",
 
-  "https://credence-pro.vercel.app",
-  "https://credence-ivys-zeta.vercel.app",
-  "https://credence-ndm4.vercel.app",
+  "https://credence-provider.vercel.app/",
+  "https://admin-credence.vercel.app/",
+  "https://credence-service.vercel.app/",
 ];
 
 const corsOptions: cors.CorsOptions = {
