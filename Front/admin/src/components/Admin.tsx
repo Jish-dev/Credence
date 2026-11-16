@@ -27,7 +27,6 @@ import {
   CreditCard,
   Eye,
   EyeOff,
-  Filter,
   LayoutDashboard,
   LockKeyhole,
   LogOut,
