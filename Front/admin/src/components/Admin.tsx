@@ -1360,7 +1360,7 @@ export default function Admin() {
 
   if (!isAuthenticated) {
     return (
-      <main className="relative flex min-h-screen flex-col overflow-hidden bg-[#111b18] font-sans text-white">
+      <main className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-[#111b18] font-sans text-white">
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -1393,33 +1393,33 @@ export default function Admin() {
           </motion.span>
         </header>
 
-        <section className="relative z-10 flex flex-1 items-center justify-center px-5 pb-32 pt-8">
+        <section className="relative z-10 flex flex-1 items-center justify-center px-5 py-6 sm:py-8">
           <motion.div
             initial={{ opacity: 0, y: 30, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ type: "spring", stiffness: 220, damping: 25 }}
-            className="w-full max-w-md"
+            className="w-full max-w-md rounded-[1.75rem] border border-white/10 bg-white/[0.045] px-5 py-6 shadow-[0_20px_65px_rgba(0,0,0,0.18)] backdrop-blur-md sm:px-9 sm:py-8"
           >
-            <div className="mb-10 text-center">
+            <div className="mb-6 text-center">
               <motion.img
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 src="/C-Logo.png"
                 alt="CREDENCE Logo"
-                className="mx-auto mb-5 h-24 w-24 object-contain"
+                className="mx-auto mb-3 h-16 w-16 object-contain"
               />
 
-              <h1 className="text-4xl font-light tracking-wide md:text-5xl">
+              <h1 className="text-3xl font-light tracking-wide md:text-4xl">
                 Sign In
               </h1>
 
-              <p className="mt-4 text-sm text-emerald-100/70">
+              <p className="mt-2 text-sm text-emerald-100/70">
                 Sign in and start managing your platform.
               </p>
             </div>
 
-            <form onSubmit={handleAdminLogin} className="space-y-6">
+            <form onSubmit={handleAdminLogin} className="space-y-4">
               <div className="relative">
                 <Mail
                   size={20}
@@ -1513,39 +1513,14 @@ export default function Admin() {
               </motion.button>
             </form>
 
-            <div className="mt-8 flex items-center justify-center gap-2 text-xs text-emerald-100/60">
+            <div className="mt-5 flex items-center justify-center gap-2 text-xs text-emerald-100/60">
               <ShieldCheck size={16} />
               Protected Administrator Login
             </div>
           </motion.div>
         </section>
 
-        <div className="pointer-events-none absolute bottom-0 left-0 h-44 w-full overflow-hidden">
-          <svg
-            viewBox="0 0 1440 300"
-            preserveAspectRatio="none"
-            className="absolute bottom-0 h-full w-full"
-          >
-            <path
-              d="M0 100 C250 210 450 130 700 110 C1000 60 1200 80 1440 140 L1440 300 L0 300Z"
-              fill="#0b5a45"
-            />
-            <path
-              d="M0 155 C260 245 520 180 760 145 C1050 95 1220 120 1440 170 L1440 300 L0 300Z"
-              fill="#1b8060"
-            />
-            <path
-              d="M0 190 C260 270 520 205 780 185 C1050 150 1230 145 1440 190 L1440 300 L0 300Z"
-              fill="#d8eee2"
-            />
-            <path
-              d="M0 215 C300 270 520 250 760 215 C1030 175 1250 175 1440 210 L1440 300 L0 300Z"
-              fill="#f5f5f7"
-            />
-          </svg>
-        </div>
-
-        <footer className="relative z-10 bg-[#f5f5f7] px-4 pb-5 pt-3 text-center text-xs text-slate-500">
+        <footer className="relative z-10 bg-[#035f283f] px-4 pb-3 pt-2 text-center text-xs text-slate-500">
           <p>© 2026 CREDENCE. All rights reserved.</p>
           <p className="mt-1">Administration Portal</p>
         </footer>
