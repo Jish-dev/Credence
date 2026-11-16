@@ -23,7 +23,7 @@ import ScrollToTop from "./components/ScrollToTop";
 import Terms from "./pages/Terms";
 import About from "./pages/About";
 import MyHomes from "./pages/MyHomes";
-
+import BookingTracking from "./pages/BookingTracking";
 // ========================================
 // LOADING SCREEN
 // ========================================
@@ -152,7 +152,13 @@ function AppLayout() {
           <Route path="/about" element={<About />} />
           {/* Customer Home Passports */}
           <Route
-            path="/my-homes" element={<MyHomes/>}
+            path="/my-homes" element={<MyHomes />}
+          />
+
+          {/* Live booking tracking */}
+          <Route
+            path="/booking/:id/tracking"
+            element={<BookingTracking/>}
           />
         </Routes>
       </main>

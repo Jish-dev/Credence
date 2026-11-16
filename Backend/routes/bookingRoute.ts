@@ -25,26 +25,46 @@ import {
 
 const router = Router();
 
-// All booking routes require login
+// ========================================
+// AUTHENTICATION
+// ========================================
+
+// All booking routes require authentication
 router.use(protect);
 
 // ========================================
-// CUSTOMER ROUTES
+// CUSTOMER BOOKING ROUTES
 // ========================================
 
 // Create booking
-router.post("/", customerOnly, createBooking);
+router.post(
+  "/",
+  customerOnly,
+  createBooking
+);
 
-// Get all customer bookings
-router.get("/my", customerOnly, getMyBookings);
+// Get customer bookings
+router.get(
+  "/my",
+  customerOnly,
+  getMyBookings
+);
 
 // Get customer booking details
-router.get("/my/:id", customerOnly, getMyBookingById);
+router.get(
+  "/my/:id",
+  customerOnly,
+  getMyBookingById
+);
 
 // Cancel booking
-router.patch("/my/:id/cancel", customerOnly, cancelMyBooking);
+router.patch(
+  "/my/:id/cancel",
+  customerOnly,
+  cancelMyBooking
+);
 
-// Confirm service completion
+// Legacy customer completion endpoint
 router.patch(
   "/my/:id/confirm-completion",
   customerOnly,
@@ -52,16 +72,38 @@ router.patch(
 );
 
 // ========================================
-// PROVIDER ROUTES
+// CUSTOMER LIVE TRACKING
 // ========================================
 
-// Get provider bookings
-router.get("/provider/my", providerOnly, getProviderBookings);
+// Get provider's live tracking information
+router.get(
+  "/my/:id/tracking",
+  customerOnly,
+  getMyBookingTracking
+);
+
+// ========================================
+// PROVIDER BOOKING ROUTES
+// ========================================
+
+// Get all provider bookings
+router.get(
+  "/provider/my",
+  providerOnly,
+  getProviderBookings
+);
 
 // Get provider booking details
-router.get("/provider/my/:id", providerOnly, getProviderBookingById);
+router.get(
+  "/provider/my/:id",
+  providerOnly,
+  getProviderBookingById
+);
 
-// Accept, reject, start or complete service
+// Update booking status
+// pending -> confirmed / rejected
+// confirmed -> in-progress
+// in-progress -> completed
 router.patch(
   "/provider/:id/status",
   providerOnly,
@@ -69,42 +111,35 @@ router.patch(
 );
 
 // ========================================
-// PROVIDER LIVE TRACKING ROUTES
+// PROVIDER LIVE GPS TRACKING
 // ========================================
 
-// Start live tracking
+// Start tracking after booking acceptance
 router.patch(
   "/provider/:id/tracking/start",
   providerOnly,
   startProviderTracking
 );
 
-// Update provider GPS location
+// Update provider's GPS coordinates
 router.patch(
   "/provider/:id/tracking/location",
   providerOnly,
   updateProviderLocation
 );
 
-// Mark provider as arrived
+// Existing arrival endpoint (retained for compatibility)
 router.patch(
   "/provider/:id/tracking/arrived",
   providerOnly,
   markProviderArrived
 );
 
-// Stop live tracking
+// Stop live GPS tracking
 router.patch(
   "/provider/:id/tracking/stop",
   providerOnly,
   stopProviderTracking
-);
-
-// Get provider live tracking
-router.get(
-  "/my/:id/tracking",
-  customerOnly,
-  getMyBookingTracking
 );
 
 export default router;

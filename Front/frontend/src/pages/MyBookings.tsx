@@ -56,6 +56,15 @@ interface Booking {
   status: BookingStatus;
   paymentStatus?: PaymentStatus;
   createdAt?: string;
+
+  providerTravelStatus?: "idle" | "on-the-way" | "arrived" | "stopped";
+  providerLocation?: {
+    latitude: number;
+    longitude: number;
+    updatedAt: string;
+  } | null;
+  trackingStartedAt?: string | null;
+  trackingEndedAt?: string | null;
 }
 
 interface BookingResponse {
@@ -1110,6 +1119,16 @@ export default function MyBookings() {
                       >
                         View details
                       </button>
+
+                      {booking.status === "confirmed" && (
+                        <Link
+                          to={`/booking/${booking._id}/tracking`}
+                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
+                        >
+                          <MapPin size={16} />
+                          Track Provider
+                        </Link>
+                      )}
 
                       {canReview && (
                         <button

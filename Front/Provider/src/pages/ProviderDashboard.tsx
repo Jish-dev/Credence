@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -673,6 +672,15 @@ export default function ProviderDashboard() {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(null);
 
+  // GPS is scoped to this dashboard session and the currently accepted booking.
+  const gpsWatchRef = useRef<number | null>(null);
+  const gpsBookingRef = useRef<string | null>(null);
+  const gpsGenerationRef = useRef(0);
+  const gpsSendingRef = useRef(false);
+  const gpsLastSentRef = useRef(0);
+  const [gpsState, setGpsState] = useState<"idle" | "requesting" | "live" | "unavailable">("idle");
+  const [gpsMessage, setGpsMessage] = useState("");
+
   const [profile, setProfile] = useState<ProviderProfileData>(emptyProfile);
   const [initialProfile, setInitialProfile] = useState<ProviderProfileData>(emptyProfile);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -783,6 +791,102 @@ export default function ProviderDashboard() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedBooking]);
 
+  // ---------- automatic provider GPS tracking ----------
+
+  const clearGps = useCallback(() => {
+    gpsGenerationRef.current += 1;
+    if (gpsWatchRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(gpsWatchRef.current);
+    }
+    gpsWatchRef.current = null;
+    gpsBookingRef.current = null;
+    gpsSendingRef.current = false;
+    gpsLastSentRef.current = 0;
+    setGpsState("idle");
+    setGpsMessage("");
+  }, []);
+
+  useEffect(() => () => {
+    // Clear the local watcher when leaving the dashboard. The server may
+    // retain its last tracking state until the booking status changes.
+    gpsGenerationRef.current += 1;
+    if (gpsWatchRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(gpsWatchRef.current);
+    }
+  }, []);
+
+  const startGps = useCallback(async (bookingId: string) => {
+    if (!navigator.geolocation || !window.isSecureContext) {
+      setGpsState("unavailable");
+      setGpsMessage("GPS requires location support and HTTPS (or localhost). Booking remains confirmed.");
+      return;
+    }
+    if (gpsBookingRef.current === bookingId && gpsWatchRef.current !== null) return;
+    clearGps();
+    const generation = gpsGenerationRef.current;
+    gpsBookingRef.current = bookingId;
+    setGpsState("requesting");
+    setGpsMessage("Requesting location permission…");
+
+    const onError = (error: GeolocationPositionError) => {
+      if (generation !== gpsGenerationRef.current) return;
+      if (gpsWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(gpsWatchRef.current);
+        gpsWatchRef.current = null;
+      }
+      gpsBookingRef.current = null;
+      setGpsState("unavailable");
+      setGpsMessage(error.code === 1
+        ? "Location permission denied. Booking is still confirmed."
+        : "GPS is unavailable. Booking is still confirmed.");
+    };
+
+    // Start the backend session only after obtaining a real GPS fix.
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      if (generation !== gpsGenerationRef.current) return;
+      try {
+        await api.patch(`/bookings/provider/${bookingId}/tracking/start`);
+        if (generation !== gpsGenerationRef.current) return;
+
+        const sendLocation = async (p: GeolocationPosition, force = false) => {
+          if (generation !== gpsGenerationRef.current || gpsSendingRef.current) return;
+          const now = Date.now();
+          if (!force && now - gpsLastSentRef.current < 5000) return;
+          gpsSendingRef.current = true;
+          try {
+            await api.patch(`/bookings/provider/${bookingId}/tracking/location`, {
+              latitude: p.coords.latitude,
+              longitude: p.coords.longitude,
+            });
+            if (generation !== gpsGenerationRef.current) return;
+            gpsLastSentRef.current = Date.now();
+            setGpsState("live");
+            setGpsMessage("Sharing live location with the customer");
+          } catch (error) {
+            if (generation !== gpsGenerationRef.current) return;
+            // A failed location update must never revert a booking status.
+            setGpsMessage(`Location update failed: ${getErrorMessage(error)}`);
+          } finally {
+            gpsSendingRef.current = false;
+          }
+        };
+
+        await sendLocation(position, true);
+        if (generation !== gpsGenerationRef.current) return;
+        gpsWatchRef.current = navigator.geolocation.watchPosition(
+          (p) => { void sendLocation(p); },
+          onError,
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+        );
+      } catch (error) {
+        if (generation !== gpsGenerationRef.current) return;
+        gpsBookingRef.current = null;
+        setGpsState("unavailable");
+        setGpsMessage(`Could not start tracking: ${getErrorMessage(error)}`);
+      }
+    }, onError, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  }, [clearGps]);
+
   // ---------- booking actions ----------
 
   async function viewBookingDetails(bookingId: string) {
@@ -817,6 +921,12 @@ export default function ProviderDashboard() {
       setSelectedBooking((current) =>
         current?._id === bookingId ? { ...current, ...(updatedBooking || {}), status } : current
       );
+      // GPS permission is independent of booking acceptance.
+      if (status === "confirmed") {
+        void startGps(bookingId);
+      } else if (status === "in-progress" || status === "completed" || status === "rejected") {
+        if (gpsBookingRef.current === bookingId) clearGps();
+      }
       await fetchDashboard();
       notify(payload?.message || `Booking ${status.replace("-", " ")} successfully.`);
     } catch (err: unknown) {
@@ -955,6 +1065,7 @@ export default function ProviderDashboard() {
 
   function handleLogout() {
     if (!window.confirm("Are you sure you want to logout?")) return;
+    clearGps();
     logout();
     navigate("/", { replace: true });
   }
@@ -1209,6 +1320,20 @@ export default function ProviderDashboard() {
             >
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
+            {gpsState !== "idle" && (
+              <span
+                role="status"
+                title={gpsMessage}
+                className={`hidden max-w-[240px] items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold sm:inline-flex ${
+                  gpsState === "live" ? "bg-emerald-50 text-emerald-800" :
+                  gpsState === "requesting" ? "bg-amber-50 text-amber-800" :
+                  "bg-rose-50 text-rose-800"
+                }`}
+              >
+                <MapPin size={14} />
+                <span className="truncate">{gpsState === "live" ? "GPS Live" : gpsState === "requesting" ? "Connecting GPS" : "GPS unavailable"}</span>
+              </span>
+            )}
             <NotificationBell />
             <div className="hidden items-center gap-3 sm:flex">
               <Avatar src={dashboard.provider.profileImage} name={providerName} size={44} />
