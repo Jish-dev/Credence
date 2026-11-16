@@ -211,24 +211,24 @@ const navGroups: {
   title: string;
   items: { id: Section; label: string; icon: typeof LayoutDashboard }[];
 }[] = [
-  {
-    title: "Workspace",
-    items: [
-      { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { id: "bookings", label: "Bookings", icon: CalendarCheck },
-      { id: "availability", label: "Availability", icon: Clock3 },
-      { id: "report", label: "Report", icon: BarChart3 },
-    ],
-  },
-  {
-    title: "Account",
-    items: [
-      { id: "profile", label: "My Profile", icon: UserRound },
-      { id: "earnings", label: "Earnings", icon: Wallet },
-      { id: "help", label: "Help & Support", icon: LifeBuoy },
-    ],
-  },
-];
+    {
+      title: "Workspace",
+      items: [
+        { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { id: "bookings", label: "Bookings", icon: CalendarCheck },
+        { id: "availability", label: "Availability", icon: Clock3 },
+        { id: "report", label: "Report", icon: BarChart3 },
+      ],
+    },
+    {
+      title: "Account",
+      items: [
+        { id: "profile", label: "My Profile", icon: UserRound },
+        { id: "earnings", label: "Earnings", icon: Wallet },
+        { id: "help", label: "Help & Support", icon: LifeBuoy },
+      ],
+    },
+  ];
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -396,9 +396,8 @@ function PageHeading({
 function StatusPill({ status }: { status: string }) {
   return (
     <span
-      className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold capitalize ring-1 ring-inset ${
-        statusColors[status] || "bg-slate-100 text-slate-700 ring-slate-500/20"
-      }`}
+      className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold capitalize ring-1 ring-inset ${statusColors[status] || "bg-slate-100 text-slate-700 ring-slate-500/20"
+        }`}
     >
       {status.replace("-", " ")}
     </span>
@@ -539,9 +538,9 @@ function BookingActionButtons({
   const actions: { status: BookingStatus; label: string; className: string }[] =
     booking.status === "pending"
       ? [
-          { status: "confirmed", label: "Accept", className: "bg-[#0F766E] text-white hover:bg-[#0B5F58]" },
-          { status: "rejected", label: "Reject", className: "bg-rose-50 text-rose-800 hover:bg-rose-100" },
-        ]
+        { status: "confirmed", label: "Accept", className: "bg-[#0F766E] text-white hover:bg-[#0B5F58]" },
+        { status: "rejected", label: "Reject", className: "bg-rose-50 text-rose-800 hover:bg-rose-100" },
+      ]
       : booking.status === "confirmed"
         ? [{ status: "in-progress", label: "Start service", className: "bg-[#0B4F4A] text-white hover:bg-[#093f3b]" }]
         : booking.status === "in-progress"
@@ -1228,9 +1227,8 @@ export default function ProviderDashboard() {
 
       {/* SIDEBAR */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-[272px] flex-col overflow-y-auto border-r border-[#E4EAE8] bg-white px-4 py-6 transition-transform duration-200 motion-reduce:transition-none md:sticky md:top-0 md:h-screen md:w-auto md:translate-x-0 ${
-          mobileNav ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-40 flex w-[272px] flex-col overflow-y-auto border-r border-[#E4EAE8] bg-white px-4 py-6 transition-transform duration-200 motion-reduce:transition-none md:sticky md:top-0 md:h-screen md:w-auto md:translate-x-0 ${mobileNav ? "translate-x-0" : "-translate-x-full"
+          }`}
         aria-label="Main navigation"
       >
         <div className="flex items-center gap-3 px-2">
@@ -1259,9 +1257,8 @@ export default function ProviderDashboard() {
                     key={id}
                     onClick={() => changeSection(id)}
                     aria-current={active ? "page" : undefined}
-                    className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3.5 text-left text-sm transition-colors motion-reduce:transition-none ${focusRing} ${
-                      active ? "bg-[#0F766E] font-semibold text-white" : "text-[#33413E] hover:bg-[#E9F1EF]"
-                    }`}
+                    className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3.5 text-left text-sm transition-colors motion-reduce:transition-none ${focusRing} ${active ? "bg-[#0F766E] font-semibold text-white" : "text-[#33413E] hover:bg-[#E9F1EF]"
+                      }`}
                   >
                     <Icon size={18} aria-hidden="true" />
                     <span className="flex-1">{label}</span>
@@ -1324,11 +1321,10 @@ export default function ProviderDashboard() {
               <span
                 role="status"
                 title={gpsMessage}
-                className={`hidden max-w-[240px] items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold sm:inline-flex ${
-                  gpsState === "live" ? "bg-emerald-50 text-emerald-800" :
-                  gpsState === "requesting" ? "bg-amber-50 text-amber-800" :
-                  "bg-rose-50 text-rose-800"
-                }`}
+                className={`hidden max-w-[240px] items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold sm:inline-flex ${gpsState === "live" ? "bg-emerald-50 text-emerald-800" :
+                    gpsState === "requesting" ? "bg-amber-50 text-amber-800" :
+                      "bg-rose-50 text-rose-800"
+                  }`}
               >
                 <MapPin size={14} />
                 <span className="truncate">{gpsState === "live" ? "GPS Live" : gpsState === "requesting" ? "Connecting GPS" : "GPS unavailable"}</span>
@@ -1542,8 +1538,12 @@ export default function ProviderDashboard() {
                                 width={42}
                               />
                               <Tooltip
-                                formatter={(value: number) => [money(Number(value)), "Earnings"]}
-                                contentStyle={{ borderRadius: 12, border: "1px solid #E4EAE8", fontSize: 12 }}
+                                formatter={(value) => [money(Number(value ?? 0)), "Earnings"]}
+                                contentStyle={{
+                                  borderRadius: 12,
+                                  border: "1px solid #E4EAE8",
+                                  fontSize: 12,
+                                }}
                               />
                               <Bar dataKey="earnings" name="Earnings" fill="#0F766E" radius={[7, 7, 0, 0]} barSize={25} />
                             </BarChart>
@@ -1692,9 +1692,8 @@ export default function ProviderDashboard() {
                           key={day}
                           onClick={() => toggleWorkingDay(day)}
                           aria-pressed={selected}
-                          className={`flex min-h-11 items-center justify-between rounded-xl border px-4 text-sm font-medium transition ${focusRing} ${
-                            selected ? "border-[#0F766E] bg-[#E9F1EF] text-[#0B4F4A]" : "border-[#D5DEDB] bg-white text-[#55625F] hover:bg-[#F7FAF9]"
-                          }`}
+                          className={`flex min-h-11 items-center justify-between rounded-xl border px-4 text-sm font-medium transition ${focusRing} ${selected ? "border-[#0F766E] bg-[#E9F1EF] text-[#0B4F4A]" : "border-[#D5DEDB] bg-white text-[#55625F] hover:bg-[#F7FAF9]"
+                            }`}
                         >
                           {day}
                           {selected ? <CheckCircle2 size={17} aria-hidden="true" /> : <span className="h-4 w-4 rounded-full border border-slate-300" aria-hidden="true" />}
