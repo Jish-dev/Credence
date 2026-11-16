@@ -10,7 +10,7 @@ export interface RazorpayOptions {
   amount: number;
   currency: string;
   name: string;
-  description?: string;
+  description: string;
   order_id: string;
 
   prefill?: {
@@ -19,9 +19,13 @@ export interface RazorpayOptions {
     contact?: string;
   };
 
-  theme?: {
-    color?: string;
-  };
+  theme: {
+  color: string;
+};
+
+  modal: {
+  ondismiss: () => void;
+};
 
   handler: (
     response: RazorpaySuccessResponse

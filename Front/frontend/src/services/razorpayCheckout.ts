@@ -36,7 +36,14 @@ export const startRazorpayPayment = async (
       name: "CREDENCE",
       description: "Service Booking Payment",
       order_id: order.razorpayOrderId,
-
+      modal: {
+        ondismiss: () => {
+          if (!paymentCompleted) {
+            reject(new Error("Payment cancelled by user."));
+          }
+        },
+      },
+      
       prefill: {
         name: user.name,
         email: user.email,
@@ -67,7 +74,14 @@ export const startRazorpayPayment = async (
     };
 
     // 5. Open Razorpay Checkout
-    const checkout = new window.Razorpay(options);
+    const Razorpay = window.Razorpay;
+
+    if (!Razorpay) {
+      reject(new Error("Razorpay Checkout SDK is unavailable."));
+      return;
+    }
+
+    const checkout = new Razorpay(options);
 
     // Handle payment failure
     checkout.on("payment.failed", (response: unknown) => {
@@ -83,8 +97,8 @@ export const startRazorpayPayment = async (
       reject(
         new Error(
           failure.error?.description ||
-            failure.error?.reason ||
-            "Payment failed. Please try again."
+          failure.error?.reason ||
+          "Payment failed. Please try again."
         )
       );
     });

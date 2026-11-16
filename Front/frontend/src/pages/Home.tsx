@@ -1460,7 +1460,7 @@ export default function Home() {
           </div>
 
           <div className="grid gap-5 md:grid-cols-3">
-            {testimonials.map((testimonial, i) => (
+            {testimonials.map((testimonial) => (
               <article
                 key={testimonial.name}
                 className="rounded-2xl border border-white bg-white p-6 shadow-sm transition-all duration-300 "

@@ -15,13 +15,6 @@ interface HomesResponse {
     count: number;
     homes: Home[];
 }
-
-interface HomeResponse {
-    success: boolean;
-    message: string;
-    home: Home;
-}
-
 interface QRResponse {
     success: boolean;
     message: string;

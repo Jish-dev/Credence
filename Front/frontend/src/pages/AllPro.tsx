@@ -558,7 +558,6 @@ export default function AllProf() {
                 const id = providerId(provider);
                 const name = providerName(provider);
                 const rating = providerRating(provider);
-                const available = isAvailableToday(provider);
                 const verified = isVerified(provider);
                 const image = providerImage(provider);
                 const isFav = favorites.includes(id);

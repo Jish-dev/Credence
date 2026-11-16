@@ -87,10 +87,6 @@ export default function Login() {
     }
   };
 
-  const handleGoogleError = () => {
-    setError("Google sign-in was cancelled or failed. Please try again.");
-  };
-
   const inputClass =
     "peer h-[48px] w-full rounded-xl border border-white/80 bg-[#edf3f1]/90 pl-11 pr-4 pt-3 text-sm text-gray-800 outline-none transition placeholder:text-transparent focus:border-emerald-700 focus:bg-white focus:ring-2 focus:ring-emerald-700/10";
 
