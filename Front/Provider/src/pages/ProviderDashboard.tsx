@@ -508,8 +508,15 @@ function MonthlyChart({
         <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#55625F", fontSize: 12 }} />
         <Tooltip
           cursor={{ fill: "#E9F1EF" }}
-          formatter={(v: number) => (currency ? money(Number(v)) : v)}
-          contentStyle={{ borderRadius: 12, border: "1px solid #E4EAE8", fontSize: 12 }}
+          formatter={(v) => {
+            const value = Number(v ?? 0);
+            return currency ? money(value) : value;
+          }}
+          contentStyle={{
+            borderRadius: 12,
+            border: "1px solid #E4EAE8",
+            fontSize: 12,
+          }}
         />
         <Bar dataKey={dataKey} name={name} fill="#0F766E" radius={[8, 8, 0, 0]} barSize={32} />
       </BarChart>
@@ -1322,8 +1329,8 @@ export default function ProviderDashboard() {
                 role="status"
                 title={gpsMessage}
                 className={`hidden max-w-[240px] items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold sm:inline-flex ${gpsState === "live" ? "bg-emerald-50 text-emerald-800" :
-                    gpsState === "requesting" ? "bg-amber-50 text-amber-800" :
-                      "bg-rose-50 text-rose-800"
+                  gpsState === "requesting" ? "bg-amber-50 text-amber-800" :
+                    "bg-rose-50 text-rose-800"
                   }`}
               >
                 <MapPin size={14} />
@@ -1538,7 +1545,7 @@ export default function ProviderDashboard() {
                                 width={42}
                               />
                               <Tooltip
-                                formatter={(value) => [money(Number(value ?? 0)), "Earnings"]}
+                                formatter={(value) => [money(Number(value ?? 0)), "Earnings",]}
                                 contentStyle={{
                                   borderRadius: 12,
                                   border: "1px solid #E4EAE8",
