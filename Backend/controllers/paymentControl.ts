@@ -174,6 +174,7 @@ const getBookingPaymentStatus = (
 
   const balancePaid =
     hasFinalBill &&
+    booking.finalBill?.approvalStatus === "approved" &&
     (
       balanceAmount <= 0 ||
       booking.balancePaymentStatus === "paid"
