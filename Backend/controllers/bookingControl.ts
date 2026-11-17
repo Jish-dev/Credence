@@ -206,9 +206,22 @@ const findVerifiedAdvancePayment = async (
     $or: [
       { purpose: "advance" },
       { purpose: { $exists: false } },
+      { purpose: null },
     ],
   }).sort({ createdAt: -1 });
 };
+// Enforce a positive, verified, amount-matched advance payment.
+const getValidAdvancePayment = async (booking: {
+  _id: mongoose.Types.ObjectId;
+  customer: mongoose.Types.ObjectId;
+  amount: number;
+}) => {
+  const expectedPaise = Math.round(Number(booking.amount) * 100);
+  if (!Number.isSafeInteger(expectedPaise) || expectedPaise <= 0) return null;
+  const payment = await findVerifiedAdvancePayment(booking);
+  return payment?.amount === expectedPaise ? payment : null;
+};
+
 // ========================================
 // BOOKING DATE/TIME VALIDATION
 // INDIA STANDARD TIME (UTC+05:30)
@@ -359,6 +372,17 @@ export const createBooking = async (
       });
     }
 
+    // Mandatory advance: no free/zero-amount booking can enter this flow.
+    // Ensure startingPrice represents the agreed advance for this provider.
+    const advanceAmount = Number(provider.startingPrice);
+    if (!Number.isFinite(advanceAmount) || advanceAmount <= 0 ||
+        !Number.isSafeInteger(Math.round(advanceAmount * 100))) {
+      return res.status(400).json({
+        success: false,
+        message: "Provider must have a valid positive advance amount before booking",
+      });
+    }
+
     const serviceName =
       provider.title || provider.category || provider.name;
 
@@ -386,7 +410,7 @@ export const createBooking = async (
       contactPhone: data.contactPhone,
 
       // Snapshot provider pricing at booking creation.
-      amount: provider.startingPrice,
+      amount: advanceAmount,
       pricingType: provider.pricingType ?? "starting_price",
 
       status: "pending",
@@ -903,6 +927,20 @@ export const updateProviderBookingStatus = async (
       });
     }
 
+    // Providers cannot accept or start an unpaid booking.
+    // Checking the payment record prevents trusting a stale booking status alone.
+    let verifiedAdvanceId: mongoose.Types.ObjectId | null = null;
+    if (newStatus === "confirmed" || newStatus === "in-progress") {
+      const advance = await getValidAdvancePayment(booking);
+      if (!advance) {
+        return res.status(402).json({
+          success: false,
+          message: "Customer must complete verified Razorpay advance payment before this booking can proceed.",
+        });
+      }
+      verifiedAdvanceId = advance._id;
+    }
+
     // Atomic status transition prevents stale GPS requests
     // or concurrent actions from restoring location sharing.
     const now = new Date();
@@ -926,6 +964,10 @@ export const updateProviderBookingStatus = async (
         _id: id,
         provider: provider._id,
         status: booking.status,
+        ...(verifiedAdvanceId ? {
+          upfrontPaymentStatus: "paid",
+          upfrontPaymentId: verifiedAdvanceId,
+        } : {}),
       },
       {
         $set: updates,
@@ -1069,9 +1111,10 @@ export const submitProviderFinalBill = async (
 
     // Verify the upfront payment.
     // Legacy records without purpose are treated as advance payments.
-    const upfrontPayment = await findVerifiedAdvancePayment({
+    const upfrontPayment = await getValidAdvancePayment({
       _id: booking._id,
       customer: booking.customer,
+      amount: booking.amount,
     });
 
     if (!upfrontPayment) {
@@ -1167,15 +1210,10 @@ export const submitProviderFinalBill = async (
           upfrontPaymentStatus: "paid",
           upfrontPaymentId: upfrontPayment._id,
 
-          balancePaymentStatus:
-            balancePaise === 0 ? "paid" : "pending",
-
-          paymentStatus:
-            balancePaise === 0 ? "paid" : "pending",
-
-          ...(balancePaise === 0
-            ? { paidAt: now }
-            : {}),
+          // Approval must happen before the booking is fully settled.
+          balancePaymentStatus: "pending",
+          paymentStatus: "pending",
+          paidAt: null,
         },
       },
       {
@@ -1271,9 +1309,10 @@ export const approveCustomerFinalBill = async (
     }
 
     // Verify upfront payment before accepting bill approval.
-    const upfrontPayment = await findVerifiedAdvancePayment({
+    const upfrontPayment = await getValidAdvancePayment({
       _id: booking._id,
       customer: booking.customer,
+      amount: booking.amount,
     });
 
     if (!upfrontPayment) {
@@ -1300,11 +1339,17 @@ export const approveCustomerFinalBill = async (
         customer: req.user.id,
         status: "completed",
         "finalBill.approvalStatus": "pending",
+        "finalBill.balanceAmount": booking.finalBill.balanceAmount,
       },
       {
         $set: {
           "finalBill.approvalStatus": "approved",
           "finalBill.approvedAt": new Date(),
+          ...(booking.finalBill.balanceAmount === 0 ? {
+            balancePaymentStatus: "paid",
+            paymentStatus: "paid",
+            paidAt: new Date(),
+          } : {}),
         },
       },
       {
