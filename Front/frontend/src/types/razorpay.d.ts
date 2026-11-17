@@ -5,13 +5,28 @@ export interface RazorpaySuccessResponse {
   razorpay_signature: string;
 }
 
+export interface RazorpayFailureResponse {
+  error?: {
+    code?: string;
+    description?: string;
+    reason?: string;
+    source?: string;
+    step?: string;
+    metadata?: {
+      order_id?: string;
+      payment_id?: string;
+    };
+  };
+}
+
 export interface RazorpayOptions {
   key: string;
   amount: number;
   currency: string;
   name: string;
-  description: string;
   order_id: string;
+
+  description?: string;
 
   prefill?: {
     name?: string;
@@ -19,13 +34,13 @@ export interface RazorpayOptions {
     contact?: string;
   };
 
-  theme: {
-  color: string;
-};
+  theme?: {
+    color: string;
+  };
 
-  modal: {
-  ondismiss: () => void;
-};
+  modal?: {
+    ondismiss?: () => void;
+  };
 
   handler: (
     response: RazorpaySuccessResponse
@@ -34,17 +49,20 @@ export interface RazorpayOptions {
 
 export interface RazorpayInstance {
   open: () => void;
+
   on: (
-    event: string,
-    callback: (response: unknown) => void
+    event: "payment.failed",
+    callback: (response: RazorpayFailureResponse) => void
   ) => void;
 }
 
+export type RazorpayConstructor = new (
+  options: RazorpayOptions
+) => RazorpayInstance;
+
 declare global {
   interface Window {
-    Razorpay?: new (
-      options: RazorpayOptions
-    ) => RazorpayInstance;
+    Razorpay?: RazorpayConstructor;
   }
 }
 

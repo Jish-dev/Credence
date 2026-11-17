@@ -122,11 +122,7 @@ interface PaymentOrderResponse {
   };
 }
 
-interface RazorpayPaymentResponse {
-  razorpay_order_id: string;
-  razorpay_payment_id: string;
-  razorpay_signature: string;
-}
+import type { RazorpayOptions } from "../types/razorpay";
 
 interface RazorpayFailureResponse {
   error?: {
@@ -135,39 +131,8 @@ interface RazorpayFailureResponse {
     reason?: string;
     source?: string;
     step?: string;
-    metadata?: {
-      order_id?: string;
-      payment_id?: string;
-    };
+    metadata?: { order_id?: string; payment_id?: string };
   };
-}
-
-interface RazorpayOptions {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  theme: {
-    color: string;
-  };
-  handler: (response: RazorpayPaymentResponse) => void;
-  modal: {
-    ondismiss: () => void;
-  };
-}
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayOptions) => {
-      open: () => void;
-      on: (
-        event: "payment.failed",
-        callback: (response: RazorpayFailureResponse) => void
-      ) => void;
-    };
-  }
 }
 
 // ========================================
@@ -479,8 +444,9 @@ export default function MyBookings() {
           ? { ...current, finalBill: { ...current.finalBill, approvalStatus: "approved" } }
           : current);
       }
-      setBillSuccess("Final bill approved successfully.");
+      setBillSuccess("Final bill approved. You can now pay the remaining balance.");
       await fetchBookings();
+      await openBookingDetails(booking);
     } catch (err) {
       setBillError(getErrorMessage(err, "Unable to approve the final bill."));
     } finally {
@@ -496,11 +462,11 @@ export default function MyBookings() {
     if (payingBookingId) return;
 
     const bill = booking.finalBill;
-    if (booking.status !== "completed" || !bill || bill.approvalStatus !== "approved") {
+    if (!bill || bill.approvalStatus !== "approved") {
       setPaymentError("Approve the final bill before paying the balance.");
       return;
     }
-    if (booking.paymentStatus === "paid" || booking.balancePaymentStatus === "paid") {
+    if (booking.balancePaymentStatus === "paid") {
       setPaymentError("This booking has already been paid.");
       return;
     }
@@ -728,7 +694,7 @@ export default function MyBookings() {
       // ------------------------------------
 
       checkout.on("payment.failed", (response) => {
-        const failure = response.error;
+        const failure = (response as RazorpayFailureResponse).error;
 
         console.error("========== RAZORPAY PAYMENT FAILED ==========");
 
@@ -1027,11 +993,12 @@ export default function MyBookings() {
                 !isReviewed &&
                 !reviewLoading;
 
+              const needsBillApproval =
+                booking.finalBill?.approvalStatus === "pending";
+
               const canPay =
-                booking.status === "completed" &&
                 booking.finalBill?.approvalStatus === "approved" &&
                 (booking.finalBill?.balanceAmount ?? 0) > 0 &&
-                booking.paymentStatus !== "paid" &&
                 booking.balancePaymentStatus !== "paid";
 
               return (
@@ -1126,6 +1093,28 @@ export default function MyBookings() {
                     </div>
                   </div>
 
+                  {booking.finalBill && (
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                          {booking.finalBill.approvalStatus === "pending"
+                            ? "Final bill awaiting your approval"
+                            : booking.balancePaymentStatus === "paid"
+                              ? "Final balance paid"
+                              : "Final bill approved"}
+                        </p>
+                        <p className="mt-1 text-lg font-bold text-[#244b3b]">
+                          Balance: {money(booking.finalBill.balanceAmount)}
+                        </p>
+                      </div>
+                      {booking.balancePaymentStatus === "paid" && (
+                        <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-700">
+                          <CheckCircle2 size={16} /> Paid
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* CARD FOOTER */}
 
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-5">
@@ -1150,6 +1139,19 @@ export default function MyBookings() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+
+                      {/* FINAL BILL REVIEW */}
+
+                      {needsBillApproval && (
+                        <button
+                          type="button"
+                          onClick={() => void openBookingDetails(booking)}
+                          className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700"
+                        >
+                          <ClipboardList size={16} />
+                          Review Final Bill
+                        </button>
+                      )}
 
                       {/* PAY NOW */}
 
@@ -1383,10 +1385,8 @@ export default function MyBookings() {
 
               {/* PAY NOW IN MODAL */}
 
-              {selectedBooking.status === "completed" &&
-                selectedBooking.finalBill?.approvalStatus === "approved" &&
+              {selectedBooking.finalBill?.approvalStatus === "approved" &&
                 (selectedBooking.finalBill?.balanceAmount ?? 0) > 0 &&
-                selectedBooking.paymentStatus !== "paid" &&
                 selectedBooking.balancePaymentStatus !== "paid" && (
                   <button
                     onClick={() => handlePayment(selectedBooking)}

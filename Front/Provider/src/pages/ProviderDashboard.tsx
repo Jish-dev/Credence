@@ -84,6 +84,7 @@ interface Booking {
   status: BookingStatus;
   paymentStatus?: string;
   upfrontPaymentStatus?: string;
+  balancePaymentStatus?: string;
   finalBill?: {
     laborCharge: number;
     materialCharge: number;
@@ -299,6 +300,26 @@ function isPaid(b: Booking) {
   return b.status === "completed" && String(b.paymentStatus || "").toLowerCase() === "paid";
 }
 
+// Customer payments verified by the backend; not provider bank settlements.
+function paidAdvance(b: Booking): number {
+  return b.upfrontPaymentStatus === "paid" ? Number(b.amount) || 0 : 0;
+}
+
+function paidBalance(b: Booking): number {
+  return b.balancePaymentStatus === "paid" && b.finalBill?.approvalStatus === "approved"
+    ? Number(b.finalBill.balanceAmount) || 0
+    : 0;
+}
+
+function totalCustomerPaid(b: Booking): number {
+  return paidAdvance(b) + paidBalance(b);
+}
+
+function outstandingBalance(b: Booking): number {
+  if (b.status !== "completed" || !b.finalBill || b.balancePaymentStatus === "paid") return 0;
+  return Math.max(0, Number(b.finalBill.balanceAmount) || 0);
+}
+
 function percent(part: number, whole: number) {
   return whole ? `${Math.round((part / whole) * 100)}%` : "—";
 }
@@ -321,7 +342,7 @@ function monthlySeries(bookings: Booking[]) {
     const bucket = buckets.find((x) => x.key === `${d.getFullYear()}-${d.getMonth()}`);
     if (!bucket) continue;
     bucket.bookings += 1;
-    if (isPaid(b)) bucket.earnings += Number(b.amount) || 0;
+    bucket.earnings += totalCustomerPaid(b);
   }
   return buckets;
 }
@@ -1225,7 +1246,7 @@ export default function ProviderDashboard() {
       const key = b.serviceName || "Service";
       const row = byService.get(key) ?? { bookings: 0, revenue: 0 };
       row.bookings += 1;
-      if (isPaid(b)) row.revenue += Number(b.amount) || 0;
+      row.revenue += totalCustomerPaid(b);
       byService.set(key, row);
     }
 
@@ -1252,22 +1273,26 @@ export default function ProviderDashboard() {
 
   const monthly = useMemo(() => monthlySeries(providerBookings), [providerBookings]);
 
-  // Earnings: computed from loaded bookings
+  // Customer payment totals from the latest loaded provider bookings.
   const earnings = useMemo(() => {
-    const paid = providerBookings.filter(isPaid);
-    const awaiting = providerBookings.filter((b) => b.status === "completed" && !isPaid(b));
-    const sum = (list: Booking[]) => list.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+    const paid = providerBookings.filter((b) => totalCustomerPaid(b) > 0);
     const now = new Date();
-    const thisMonth = paid.filter((b) => {
+    const thisMonth = providerBookings.filter((b) => {
       const d = new Date(b.bookingDate);
       return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
     });
+    const advancePaid = providerBookings.reduce((sum, b) => sum + paidAdvance(b), 0);
+    const balancePaid = providerBookings.reduce((sum, b) => sum + paidBalance(b), 0);
+    const pendingPayout = providerBookings.reduce((sum, b) => sum + outstandingBalance(b), 0);
     return {
       paidCount: paid.length,
-      thisMonth: sum(thisMonth),
-      pendingPayout: sum(awaiting),
-      awaitingCount: awaiting.length,
-      avg: paid.length ? Math.round(sum(paid) / paid.length) : 0,
+      advancePaid,
+      balancePaid,
+      totalPaid: advancePaid + balancePaid,
+      thisMonth: thisMonth.reduce((sum, b) => sum + totalCustomerPaid(b), 0),
+      pendingPayout,
+      awaitingCount: providerBookings.filter((b) => outstandingBalance(b) > 0).length,
+      avg: paid.length ? Math.round((advancePaid + balancePaid) / paid.length) : 0,
       recent: providerBookings.filter((b) => b.status === "completed").slice(0, 10),
     };
   }, [providerBookings]);
@@ -1276,7 +1301,7 @@ export default function ProviderDashboard() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const kpis = [
-    { label: "Total earnings", value: money(stats.totalEarnings), note: "Paid, completed jobs", icon: IndianRupee, hero: true },
+    { label: "Total earnings", value: money(earnings.totalPaid), note: "Paid, completed jobs", icon: IndianRupee, hero: true },
     { label: "Total bookings", value: stats.totalBookings, note: "All booking requests", icon: CalendarCheck },
     { label: "Pending requests", value: stats.pendingJobs, note: "Waiting for your response", icon: Clock3 },
     { label: "Completed jobs", value: stats.completedJobs, note: "Successfully finished", icon: CheckCircle2 },
@@ -1855,7 +1880,7 @@ export default function ProviderDashboard() {
                   <StatCard hero label="Bookings in period" value={providerBookingsLoading ? "…" : report.total} note="Based on booking date" />
                   <StatCard label="Completion rate" value={providerBookingsLoading ? "…" : report.completionRate} note="Completed ÷ all bookings" />
                   <StatCard label="Response rate" value={providerBookingsLoading ? "…" : report.responseRate} note="Accepted ÷ (accepted + rejected)" />
-                  <StatCard label="Average job value" value={providerBookingsLoading ? "…" : report.avgValue} note="Paid, completed jobs" />
+                  <StatCard label="Average job value" value={providerBookingsLoading ? "…" : report.avgValue} note="Verified customer payments in loaded bookings" />
                 </div>
 
                 <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
@@ -2131,10 +2156,16 @@ export default function ProviderDashboard() {
                 {bookingsError}
 
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <StatCard hero label="Total earnings" value={loading ? "…" : money(stats.totalEarnings)} note="Paid, completed jobs" />
+                  <StatCard hero label="Total earnings" value={loading ? "…" : money(earnings.totalPaid)} note="Verified customer payments in loaded bookings" />
                   <StatCard label="This month" value={providerBookingsLoading ? "…" : money(earnings.thisMonth)} note="Paid jobs this month" />
                   <StatCard label="Pending payout" value={providerBookingsLoading ? "…" : money(earnings.pendingPayout)} note={`${earnings.awaitingCount} completed job${earnings.awaitingCount === 1 ? "" : "s"} not yet paid`} />
                   <StatCard label="Average per job" value={providerBookingsLoading ? "…" : earnings.paidCount ? money(earnings.avg) : "—"} note={`${earnings.paidCount} paid job${earnings.paidCount === 1 ? "" : "s"}`} />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <StatCard label="Advance paid by customers" value={providerBookingsLoading ? "…" : money(earnings.advancePaid)} note="Verified advance payments" />
+                  <StatCard label="Balance paid by customers" value={providerBookingsLoading ? "…" : money(earnings.balancePaid)} note="Verified final balance payments" />
+                  <StatCard label="Total customer payments" value={providerBookingsLoading ? "…" : money(earnings.totalPaid)} note="Advance + balance; not bank settlement" />
                 </div>
 
                 <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
@@ -2155,7 +2186,7 @@ export default function ProviderDashboard() {
                       {[
                         "Accept a booking and complete the service.",
                         "Once the job is marked Completed and the customer's payment is Paid, it counts towards your earnings.",
-                        "Completed jobs that aren't paid yet appear as Pending payout.",
+                        "Unpaid final balances appear as Pending payout; bank settlement is tracked separately.",
                       ].map((t, i) => (
                         <li key={t} className="flex gap-3">
                           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#0F766E] text-xs font-bold text-white">{i + 1}</span>
@@ -2181,7 +2212,7 @@ export default function ProviderDashboard() {
                       <table className="w-full min-w-[640px] text-left">
                         <thead className="bg-[#F7FAF9]">
                           <tr>
-                            {["Customer", "Service", "Date", "Amount", "Payment", ""].map((h, i) => (
+                            {["Customer", "Service", "Date", "Advance paid", "Balance paid", "Payment", ""].map((h, i) => (
                               <th key={i} scope="col" className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-[#55625F] sm:px-6">{h}</th>
                             ))}
                           </tr>
@@ -2192,7 +2223,8 @@ export default function ProviderDashboard() {
                               <td className="px-5 py-4 text-sm font-semibold sm:px-6">{b.customer?.name || "Customer"}</td>
                               <td className="px-5 py-4 text-sm sm:px-6">{b.serviceName || "Service"}</td>
                               <td className="px-5 py-4 text-sm sm:px-6">{formatDate(b.bookingDate)}</td>
-                              <td className="px-5 py-4 text-sm font-semibold sm:px-6">{money(b.amount)}</td>
+                              <td className="px-5 py-4 text-sm font-semibold sm:px-6">{money(paidAdvance(b))}</td>
+                              <td className="px-5 py-4 text-sm font-semibold text-emerald-700 sm:px-6">{money(paidBalance(b))}</td>
                               <td className="px-5 py-4 sm:px-6"><StatusPill status={isPaid(b) ? "paid" : b.paymentStatus?.toLowerCase() || "unpaid"} /></td>
                               <td className="px-5 py-4 text-right sm:px-6">
                                 <button onClick={() => void viewBookingDetails(b._id)} className={`${btnGhost} !px-3 text-xs`}><Eye size={14} /> View</button>
@@ -2206,7 +2238,7 @@ export default function ProviderDashboard() {
                     <EmptyState icon={Wallet} title="No completed jobs yet" text="Completed jobs and their payments will show up here." />
                   )}
                 </section>
-                <p className="text-xs text-[#55625F]">Monthly figures use your {providerBookings.length} most recent loaded bookings. Total earnings comes from your dashboard summary.</p>
+                <p className="text-xs text-[#55625F]">Monthly figures use your {providerBookings.length} most recent loaded bookings. Totals are based on loaded bookings (up to 50); bank settlement is separate.</p>
               </>
             )}
 
@@ -2416,6 +2448,9 @@ export default function ProviderDashboard() {
                   <DetailItem label="Booking time" value={selectedBooking.bookingTime || "Not specified"} />
                   <DetailItem label="Location" value={selectedBooking.location || "Not provided"} />
                   <DetailItem label="Payment status" value={selectedBooking.paymentStatus || "Not available"} />
+                  <DetailItem label="Advance paid" value={money(paidAdvance(selectedBooking))} />
+                  <DetailItem label="Balance paid" value={money(paidBalance(selectedBooking))} />
+                  <DetailItem label="Total customer paid" value={money(totalCustomerPaid(selectedBooking))} />
                 </div>
                 {selectedBooking.description && (
                   <div className="rounded-xl bg-[#F2F6F5] p-4">

@@ -10,8 +10,10 @@ import {
   Phone,
   ClipboardList,
   CheckCircle2,
+  CreditCard,
 } from "lucide-react";
 import { api } from "../api";
+import type { RazorpayOptions, RazorpaySuccessResponse } from "../types/razorpay";
 
 interface Provider {
   _id: string;
@@ -36,6 +38,31 @@ interface BookingForm {
   contactPhone: string;
   description: string;
 }
+
+const loadRazorpay = async (): Promise<void> => {
+  if (window.Razorpay) return;
+  await new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
+    );
+    const script = existing ?? document.createElement("script");
+    const onLoad = () => resolve();
+    const onError = () => reject(new Error("Razorpay checkout could not be loaded."));
+    script.addEventListener("load", onLoad, { once: true });
+    script.addEventListener("error", onError, { once: true });
+    if (!existing) {
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  });
+  if (!window.Razorpay) throw new Error("Razorpay is unavailable. Please retry.");
+};
+
+const getErrorMessage = (error: unknown): string => {
+  const err = error as { response?: { data?: { message?: string } }; message?: string };
+  return err?.response?.data?.message || err?.message || "Something went wrong. Please try again.";
+};
 
 // ========================================
 // DATE HELPERS
@@ -195,14 +222,88 @@ export default function Booking() {
   };
 
   // ========================================
+  // RAZORPAY ADVANCE PAYMENT
+  // ========================================
+
+  const payAdvance = async (bookingId: string): Promise<void> => {
+    setError("");
+    setSubmitting(true);
+    try {
+      await loadRazorpay();
+      const orderResponse = await api.post("/payments/create-order", {
+        bookingId,
+        purpose: "advance",
+      });
+      const result = orderResponse.data;
+      const order = result?.order ?? result?.data?.order ?? result?.data ?? result;
+      const orderId = order?.id ?? order?.razorpayOrderId ?? order?.orderId;
+      const amount = Number(order?.amount);
+      const currency = order?.currency ?? "INR";
+      const key = order?.keyId ?? (import.meta.env.VITE_RAZORPAY_KEY_ID as string | undefined);
+
+      if (!key) throw new Error("Razorpay public key is not configured.");
+      if (!orderId || !Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Invalid Razorpay order response. Check your payment API.");
+      }
+      if (!window.Razorpay) throw new Error("Razorpay checkout is unavailable.");
+
+      const checkoutOptions: RazorpayOptions = {
+        key,
+        amount,
+        currency,
+        order_id: orderId,
+        name: "CREDENCE",
+        description: "Service booking advance payment",
+        theme: { color: "#047857" },
+        handler: async (response: RazorpaySuccessResponse) => {
+          try {
+            // Never trust checkout success until the server verifies it.
+            if (response.razorpay_order_id !== orderId) {
+              throw new Error("Payment order mismatch. Please contact support.");
+            }
+            const verification = await api.post("/payments/verify-payment", {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            if (verification.data?.success !== true) {
+              throw new Error(verification.data?.message || "Payment verification failed.");
+            }
+            setSuccess("Advance payment verified successfully. Your booking is ready for provider confirmation.");
+            setError("");
+          } catch (err) {
+            setError(`Payment verification could not be confirmed: ${getErrorMessage(err)}. Check My Bookings before trying to pay again.`);
+          } finally {
+            setSubmitting(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setSubmitting(false);
+            setError("Payment was not completed. Your booking was saved; use Retry Advance Payment to continue.");
+          },
+        },
+      };
+      const Razorpay = window.Razorpay;
+      if (!Razorpay) throw new Error("Razorpay checkout is unavailable.");
+      const checkout = new Razorpay(checkoutOptions);
+      checkout.on("payment.failed", (response) => {
+        setSubmitting(false);
+        setError(response.error?.description || "Payment failed. Your booking is saved; you can retry.");
+      });
+      checkout.open();
+    } catch (err) {
+      setSubmitting(false);
+      setError(getErrorMessage(err));
+    }
+  };
+
+  // ========================================
   // BOOKING SUBMISSION
   // ========================================
 
-  const handleSubmit = async (
-    event: FormEvent<HTMLFormElement>
-  ) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
     setError("");
     setSuccess("");
 
@@ -210,86 +311,48 @@ export default function Booking() {
       setError("Provider information is missing.");
       return;
     }
-
     if (createdBookingId) {
-      setError("Your booking has already been submitted.");
+      await payAdvance(createdBookingId);
       return;
     }
-
     if (form.bookingType === "pre_booking") {
       if (!form.bookingDate || !form.bookingTime) {
-        setError(
-          "Please select your preferred pre-booking date and time."
-        );
+        setError("Please select your preferred pre-booking date and time.");
         return;
       }
-
       if (!isBookingTimeValid(form.bookingDate, form.bookingTime)) {
-        setError(
-          "Please choose a pre-booking time at least 30 minutes from now."
-        );
+        setError("Please choose a pre-booking time at least 30 minutes from now.");
         return;
       }
     }
-
     if (!form.location.trim()) {
       setError("Please enter your service location.");
       return;
     }
-
     if (!form.contactPhone.trim()) {
       setError("Please enter your contact phone number.");
       return;
     }
 
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-
       const payload = {
         providerId: provider._id,
         bookingType: form.bookingType,
-        bookingDate:
-          form.bookingType === "pre_booking"
-            ? form.bookingDate
-            : null,
-        bookingTime:
-          form.bookingType === "pre_booking"
-            ? form.bookingTime
-            : "",
+        bookingDate: form.bookingType === "pre_booking" ? form.bookingDate : null,
+        bookingTime: form.bookingType === "pre_booking" ? form.bookingTime : "",
         location: form.location.trim(),
         contactPhone: form.contactPhone.trim(),
         description: form.description.trim(),
       };
-
-      console.log("CREDENCE BOOKING REQUEST:", payload);
-
       const response = await api.post("/bookings", payload);
-
-      const booking =
-        response.data?.booking ??
-        response.data?.data?.booking ??
-        response.data?.data;
-
-      if (!booking?._id) {
-        throw new Error("Booking could not be created.");
-      }
-
+      const booking = response.data?.booking ?? response.data?.data?.booking ?? response.data?.data;
+      if (!booking?._id) throw new Error("Booking could not be created.");
       setCreatedBookingId(booking._id);
-
-      setSuccess(
-        "Your booking request has been submitted successfully. You can track its status in My Bookings. Payment will be available after the service is completed."
-      );
-
-      console.log("CREDENCE BOOKING CREATED:", booking);
-    } catch (err: any) {
-      console.error("CREDENCE BOOKING ERROR:", err?.response?.data || err);
-
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Unable to process your booking. Please try again."
-      );
-    } finally {
+      setSubmitting(false);
+      await payAdvance(booking._id);
+    } catch (err) {
+      setError(getErrorMessage(err));
       setSubmitting(false);
     }
   };
@@ -353,7 +416,7 @@ export default function Booking() {
           />
 
           <h1 className="mt-4 text-2xl font-extrabold text-slate-900">
-            Booking submitted!
+            Advance payment successful!
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-slate-600">
@@ -649,11 +712,12 @@ export default function Booking() {
                 disabled={submitting}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting ? "Submitting Booking..." : "Confirm Booking"}
+                <CreditCard size={17} />
+                {submitting ? "Processing..." : createdBookingId ? "Retry Advance Payment" : "Book & Pay Advance"}
               </button>
 
               <p className="text-center text-xs text-slate-400">
-                No payment required now. Pay securely after service completion.
+                Advance payment is mandatory before your provider can accept or start the service. Remaining charges are payable after final bill approval.
               </p>
             </form>
           </section>
@@ -702,7 +766,7 @@ export default function Booking() {
 
                 <div className="mt-5 border-t border-slate-100 pt-4">
                   <p className="text-sm text-slate-500">
-                    Starting price
+                    Booking advance
                   </p>
 
                   <p className="mt-1 text-2xl font-extrabold text-slate-950">
@@ -715,7 +779,7 @@ export default function Booking() {
             </div>
 
             <p className="mt-4 px-2 text-center text-xs leading-5 text-emerald-800">
-              Your booking will be submitted first. Payment becomes available after the service is completed.
+              Your advance is paid securely through Razorpay. Any remaining balance is payable after the final bill is approved.
             </p>
           </aside>
         </div>
