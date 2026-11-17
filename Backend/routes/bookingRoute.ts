@@ -10,6 +10,8 @@ import {
   getProviderBookings,
   getProviderBookingById,
   updateProviderBookingStatus,
+  submitProviderFinalBill,
+  approveCustomerFinalBill,
   startProviderTracking,
   updateProviderLocation,
   markProviderArrived,
@@ -72,6 +74,17 @@ router.patch(
 );
 
 // ========================================
+// CUSTOMER FINAL BILL ROUTES
+// ========================================
+
+// Customer reviews and approves provider's final bill
+router.patch(
+  "/my/:id/approve-final-bill",
+  customerOnly,
+  approveCustomerFinalBill
+);
+
+// ========================================
 // CUSTOMER LIVE TRACKING
 // ========================================
 
@@ -103,11 +116,22 @@ router.get(
 // Update booking status
 // pending -> confirmed / rejected
 // confirmed -> in-progress
-// in-progress -> completed
 router.patch(
   "/provider/:id/status",
   providerOnly,
   updateProviderBookingStatus
+);
+
+// ========================================
+// PROVIDER FINAL BILL ROUTES
+// ========================================
+
+// Provider submits labour, material and other charges.
+// Submitting the final bill completes the service.
+router.post(
+  "/provider/:id/final-bill",
+  providerOnly,
+  submitProviderFinalBill
 );
 
 // ========================================
@@ -128,7 +152,7 @@ router.patch(
   updateProviderLocation
 );
 
-// Existing arrival endpoint (retained for compatibility)
+// Mark provider arrival
 router.patch(
   "/provider/:id/tracking/arrived",
   providerOnly,

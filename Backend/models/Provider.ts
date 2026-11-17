@@ -16,6 +16,10 @@ export type ProviderType =
   | "business"
   | "company";
 
+export type ProviderPricingType =
+  | "starting_price"
+  | "booking_advance";
+
 export interface IProvider {
   // Connected login account
   user?: mongoose.Types.ObjectId;
@@ -42,6 +46,8 @@ export interface IProvider {
   email: string;
 
   startingPrice: number;
+  pricingType: ProviderPricingType;
+
   profileImage: string;
 
   status: ProviderStatus;
@@ -166,6 +172,12 @@ const providerSchema = new Schema<IProvider>(
       type: Number,
       min: 0,
       default: 0,
+    },
+
+    pricingType: {
+      type: String,
+      enum: ["starting_price", "booking_advance"],
+      default: "starting_price",
     },
 
     profileImage: {

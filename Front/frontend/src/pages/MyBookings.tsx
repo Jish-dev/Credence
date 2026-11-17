@@ -43,6 +43,19 @@ interface Provider {
   contact?: string;
 }
 
+interface FinalBill {
+  laborCharge: number;
+  materialCharge: number;
+  otherCharges: number;
+  totalAmount: number;
+  advanceDeducted: number;
+  balanceAmount: number;
+  description?: string;
+  approvalStatus: "pending" | "approved";
+  submittedAt?: string;
+  approvedAt?: string | null;
+}
+
 interface Booking {
   _id: string;
   provider: Provider | null;
@@ -55,6 +68,9 @@ interface Booking {
   amount: number;
   status: BookingStatus;
   paymentStatus?: PaymentStatus;
+  upfrontPaymentStatus?: PaymentStatus;
+  balancePaymentStatus?: PaymentStatus;
+  finalBill?: FinalBill | null;
   createdAt?: string;
 
   providerTravelStatus?: "idle" | "on-the-way" | "arrived" | "stopped";
@@ -189,6 +205,8 @@ const paymentStyles: Record<PaymentStatus, string> = {
 // HELPERS
 // ========================================
 
+const money = (value: number) => `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const formatDate = (date: string) =>
   new Date(date).toLocaleDateString("en-IN", {
     day: "numeric",
@@ -293,6 +311,10 @@ export default function MyBookings() {
 
   const [selectedBooking, setSelectedBooking] =
     useState<Booking | null>(null);
+
+  const [approvingBookingId, setApprovingBookingId] = useState<string | null>(null);
+  const [billError, setBillError] = useState("");
+  const [billSuccess, setBillSuccess] = useState("");
 
   // Payment state
   const [payingBookingId, setPayingBookingId] = useState<string | null>(
@@ -427,6 +449,45 @@ export default function MyBookings() {
   const canCancel = (status: BookingStatus) =>
     status === "pending" || status === "confirmed";
 
+  const openBookingDetails = async (booking: Booking) => {
+    setBillError("");
+    setSelectedBooking(booking);
+    try {
+      const response = await api.get(`/bookings/my/${booking._id}`);
+      const payload = response.data?.data ?? response.data;
+      const fresh = payload?.booking ?? payload?.data?.booking ?? payload;
+      if (fresh?._id === booking._id) setSelectedBooking(fresh as Booking);
+    } catch (err) {
+      setBillError(getErrorMessage(err, "Unable to refresh booking details."));
+    }
+  };
+
+  const approveFinalBill = async (booking: Booking) => {
+    if (!booking.finalBill || booking.finalBill.approvalStatus !== "pending") return;
+    try {
+      setApprovingBookingId(booking._id);
+      setBillError("");
+      setBillSuccess("");
+      const response = await api.patch(`/bookings/my/${booking._id}/approve-final-bill`);
+      const payload = response.data?.data ?? response.data;
+      const fresh = payload?.booking ?? payload?.data?.booking;
+      if (fresh?._id) {
+        setSelectedBooking(fresh as Booking);
+        setBookings((current) => current.map((item) => item._id === booking._id ? { ...item, ...fresh } : item));
+      } else {
+        setSelectedBooking((current) => current?._id === booking._id && current.finalBill
+          ? { ...current, finalBill: { ...current.finalBill, approvalStatus: "approved" } }
+          : current);
+      }
+      setBillSuccess("Final bill approved successfully.");
+      await fetchBookings();
+    } catch (err) {
+      setBillError(getErrorMessage(err, "Unable to approve the final bill."));
+    } finally {
+      setApprovingBookingId(null);
+    }
+  };
+
   // ========================================
   // RAZORPAY PAYMENT
   // ========================================
@@ -434,24 +495,17 @@ export default function MyBookings() {
   const handlePayment = async (booking: Booking) => {
     if (payingBookingId) return;
 
-    if (booking.status !== "completed") {
-      setPaymentError(
-        "Payment is available only after the service is completed."
-      );
+    const bill = booking.finalBill;
+    if (booking.status !== "completed" || !bill || bill.approvalStatus !== "approved") {
+      setPaymentError("Approve the final bill before paying the balance.");
       return;
     }
-
-    if (booking.paymentStatus === "paid") {
+    if (booking.paymentStatus === "paid" || booking.balancePaymentStatus === "paid") {
       setPaymentError("This booking has already been paid.");
       return;
     }
-
-    if (
-      typeof booking.amount !== "number" ||
-      !Number.isFinite(booking.amount) ||
-      booking.amount <= 0
-    ) {
-      setPaymentError("A valid booking amount is not available.");
+    if (!Number.isFinite(bill.balanceAmount) || bill.balanceAmount <= 0) {
+      setPaymentError("There is no remaining balance to pay.");
       return;
     }
 
@@ -481,6 +535,7 @@ export default function MyBookings() {
         "/payments/create-order",
         {
           bookingId: booking._id,
+          purpose: "balance",
         }
       );
 
@@ -496,7 +551,7 @@ export default function MyBookings() {
       // STEP 3: VALIDATE ORDER
       // ------------------------------------
 
-      const expectedAmount = Math.round(booking.amount * 100);
+      const expectedAmount = Math.round(bill.balanceAmount * 100);
 
       const validOrderId =
         typeof order.razorpayOrderId === "string" &&
@@ -538,13 +593,13 @@ export default function MyBookings() {
 
       if (order.amount !== expectedAmount) {
         console.error("CREDENCE AMOUNT MISMATCH:", {
-          bookingAmountInRupees: booking.amount,
+          balanceAmountInRupees: bill.balanceAmount,
           expectedAmountInPaise: expectedAmount,
           razorpayAmount: order.amount,
         });
 
         throw new Error(
-          "Payment amount does not match the booking amount."
+          "Payment amount does not match the outstanding balance."
         );
       }
 
@@ -556,7 +611,7 @@ export default function MyBookings() {
 
       console.log({
         bookingId: booking._id,
-        bookingAmount: booking.amount,
+        balanceAmount: bill.balanceAmount,
         expectedAmountInPaise: expectedAmount,
         razorpayOrderId: order.razorpayOrderId,
         razorpayAmount: order.amount,
@@ -576,7 +631,7 @@ export default function MyBookings() {
         amount: order.amount,
         currency: order.currency,
         name: "CREDENCE",
-        description: `Payment for ${booking.serviceName}`,
+        description: `Final balance for ${booking.serviceName}`,
         order_id: order.razorpayOrderId,
 
         theme: {
@@ -628,7 +683,7 @@ export default function MyBookings() {
             setPaymentError("");
 
             setPaymentSuccess(
-              "Payment successful! Your booking has been paid."
+              "Balance payment verified successfully!"
             );
 
             setSelectedBooking(null);
@@ -974,7 +1029,10 @@ export default function MyBookings() {
 
               const canPay =
                 booking.status === "completed" &&
-                booking.paymentStatus !== "paid";
+                booking.finalBill?.approvalStatus === "approved" &&
+                (booking.finalBill?.balanceAmount ?? 0) > 0 &&
+                booking.paymentStatus !== "paid" &&
+                booking.balancePaymentStatus !== "paid";
 
               return (
                 <article
@@ -1109,12 +1167,12 @@ export default function MyBookings() {
 
                           {payingBookingId === booking._id
                             ? "Processing..."
-                            : "Pay Now"}
+                            : "Pay Balance"}
                         </button>
                       )}
 
                       <button
-                        onClick={() => setSelectedBooking(booking)}
+                        onClick={() => void openBookingDetails(booking)}
                         className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
                       >
                         View details
@@ -1200,7 +1258,7 @@ export default function MyBookings() {
             onClick={() => setSelectedBooking(null)}
           >
             <div
-              className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
@@ -1291,10 +1349,45 @@ export default function MyBookings() {
                 )}
               </div>
 
+              {selectedBooking.finalBill && (
+                <section className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-bold text-[#153d32]">Final Service Bill</h3>
+                    <span className="text-xs font-semibold text-emerald-800">{formatStatus(selectedBooking.finalBill.approvalStatus)}</span>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm">
+                    {([
+                      ["Labour charges", selectedBooking.finalBill.laborCharge],
+                      ["Material charges", selectedBooking.finalBill.materialCharge],
+                      ["Other charges", selectedBooking.finalBill.otherCharges],
+                    ] as const).map(([label, amount]) => (
+                      <div key={label} className="flex justify-between gap-3"><span className="text-gray-600">{label}</span><strong>{money(amount)}</strong></div>
+                    ))}
+                    <div className="flex justify-between border-t border-emerald-100 pt-3"><span>Total bill</span><strong>{money(selectedBooking.finalBill.totalAmount)}</strong></div>
+                    <div className="flex justify-between"><span>Advance deducted</span><strong className="text-emerald-700">− {money(selectedBooking.finalBill.advanceDeducted)}</strong></div>
+                    <div className="flex justify-between border-t border-emerald-200 pt-3 text-base font-bold text-[#153d32]"><span>Balance due</span><span>{money(selectedBooking.finalBill.balanceAmount)}</span></div>
+                  </div>
+                  {selectedBooking.finalBill.description && <p className="mt-3 text-sm text-gray-600">{selectedBooking.finalBill.description}</p>}
+                  {selectedBooking.finalBill.approvalStatus === "pending" && (
+                    <button type="button" onClick={() => void approveFinalBill(selectedBooking)} disabled={approvingBookingId !== null} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
+                      {approvingBookingId === selectedBooking._id ? "Approving..." : "Approve Final Bill"}
+                    </button>
+                  )}
+                  {selectedBooking.finalBill.approvalStatus === "approved" && selectedBooking.finalBill.balanceAmount === 0 && (
+                    <p className="mt-3 text-sm font-semibold text-emerald-700">No remaining balance. No additional payment required.</p>
+                  )}
+                </section>
+              )}
+              {billError && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{billError}</p>}
+              {billSuccess && <p className="mt-3 rounded-xl bg-green-50 p-3 text-sm text-green-700">{billSuccess}</p>}
+
               {/* PAY NOW IN MODAL */}
 
               {selectedBooking.status === "completed" &&
-                selectedBooking.paymentStatus !== "paid" && (
+                selectedBooking.finalBill?.approvalStatus === "approved" &&
+                (selectedBooking.finalBill?.balanceAmount ?? 0) > 0 &&
+                selectedBooking.paymentStatus !== "paid" &&
+                selectedBooking.balancePaymentStatus !== "paid" && (
                   <button
                     onClick={() => handlePayment(selectedBooking)}
                     disabled={payingBookingId !== null}
@@ -1308,7 +1401,7 @@ export default function MyBookings() {
 
                     {payingBookingId === selectedBooking._id
                       ? "Processing Payment..."
-                      : "Pay Now"}
+                      : "Pay Balance"}
                   </button>
                 )}
 

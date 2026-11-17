@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, ReactNode } from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -83,6 +83,17 @@ interface Booking {
   amount: number;
   status: BookingStatus;
   paymentStatus?: string;
+  upfrontPaymentStatus?: string;
+  finalBill?: {
+    laborCharge: number;
+    materialCharge: number;
+    otherCharges: number;
+    totalAmount: number;
+    advanceDeducted: number;
+    balanceAmount: number;
+    description?: string;
+    approvalStatus: "pending" | "approved" | "rejected";
+  } | null;
   location?: string;
   contactPhone?: string;
   createdAt?: string;
@@ -677,6 +688,17 @@ export default function ProviderDashboard() {
   const [providerBookingsError, setProviderBookingsError] = useState("");
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(null);
+  const [finalBillBooking, setFinalBillBooking] = useState<Booking | null>(null);
+  const [finalBillLoading, setFinalBillLoading] = useState(false);
+  const [finalBillSaving, setFinalBillSaving] = useState(false);
+  const [finalBillError, setFinalBillError] = useState("");
+  const [billLabor, setBillLabor] = useState("");
+  const [billMaterial, setBillMaterial] = useState("");
+  const [billOther, setBillOther] = useState("0");
+  const [billDescription, setBillDescription] = useState("");
+  const billTotalPaise = [billLabor, billMaterial, billOther].reduce((sum, value) => sum + Math.round((Number(value) || 0) * 100), 0);
+  const billAdvancePaise = Math.round(Number(finalBillBooking?.amount ?? 0) * 100);
+  const billBalancePaise = billTotalPaise - billAdvancePaise;
 
   // GPS is scoped to this dashboard session and the currently accepted booking.
   const gpsWatchRef = useRef<number | null>(null);
@@ -907,7 +929,71 @@ export default function ProviderDashboard() {
     }
   }
 
+  async function openFinalBill(bookingId: string) {
+    if (finalBillLoading) return;
+    setFinalBillLoading(true);
+    setFinalBillError("");
+    try {
+      const response = await api.get(`/bookings/provider/my/${bookingId}`);
+      const payload = response.data?.data ?? response.data;
+      const booking: Booking | undefined = payload?.booking ?? payload?.data?.booking;
+      if (!booking || booking.status !== "in-progress" || booking.finalBill) {
+        notify("This booking is not available for final bill submission.");
+        return;
+      }
+      setBillLabor("");
+      setBillMaterial("");
+      setBillOther("0");
+      setBillDescription("");
+      setSelectedBooking(null);
+      setFinalBillBooking(booking);
+    } catch (err: unknown) {
+      notify(getErrorMessage(err));
+    } finally {
+      setFinalBillLoading(false);
+    }
+  }
+
+  async function submitFinalBill(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!finalBillBooking || finalBillSaving) return;
+    const values = [billLabor, billMaterial, billOther];
+    if (values.some((v) => v.trim() === "" || !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 10000000 || !/^\d+(?:\.\d{1,2})?$/.test(v.trim()))) {
+      setFinalBillError("Enter valid non-negative charges with up to two decimal places.");
+      return;
+    }
+    if (billTotalPaise < billAdvancePaise) {
+      setFinalBillError("Final bill cannot be less than the advance already paid.");
+      return;
+    }
+    setFinalBillSaving(true);
+    setFinalBillError("");
+    try {
+      const response = await api.post(`/bookings/provider/${finalBillBooking._id}/final-bill`, {
+        laborCharge: Number(billLabor),
+        materialCharge: Number(billMaterial),
+        otherCharges: Number(billOther),
+        description: billDescription.trim(),
+      });
+      const payload = response.data?.data ?? response.data;
+      const updated: Booking | undefined = payload?.booking ?? payload?.data?.booking;
+      setProviderBookings((current) => current.map((b) => b._id === finalBillBooking._id ? { ...b, ...(updated ?? {}), status: "completed" } : b));
+      if (gpsBookingRef.current === finalBillBooking._id) clearGps();
+      setFinalBillBooking(null);
+      notify(payload?.message || "Final bill submitted successfully.");
+      await Promise.all([fetchDashboard(), fetchProviderBookings()]);
+    } catch (err: unknown) {
+      setFinalBillError(getErrorMessage(err));
+    } finally {
+      setFinalBillSaving(false);
+    }
+  }
+
   async function updateBookingStatus(bookingId: string, status: BookingStatus) {
+    if (status === "completed") {
+      await openFinalBill(bookingId);
+      return;
+    }
     const actionLabels: Record<string, string> = {
       confirmed: "accept this booking",
       rejected: "reject this booking",
@@ -930,9 +1016,13 @@ export default function ProviderDashboard() {
       // GPS permission is independent of booking acceptance.
       if (status === "confirmed") {
         void startGps(bookingId);
-      } else if (status === "in-progress" || status === "completed" || status === "rejected") {
-        if (gpsBookingRef.current === bookingId) clearGps();
       }
+      else if (status === "in-progress" || status === "rejected") {
+        if (gpsBookingRef.current === bookingId) {
+          clearGps();
+        }
+      }
+
       await fetchDashboard();
       notify(payload?.message || `Booking ${status.replace("-", " ")} successfully.`);
     } catch (err: unknown) {
@@ -2237,6 +2327,54 @@ export default function ProviderDashboard() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* PROVIDER FINAL BILL DIALOG */}
+      <AnimatePresence>
+        {finalBillBooking && (
+          <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" onClick={() => { if (!finalBillSaving) setFinalBillBooking(null); }}>
+            <motion.section role="dialog" aria-modal="true" aria-label="Submit final bill" initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: .98 }} className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-[24px] bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between border-b border-[#E4EAE8] p-5 sm:p-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-[#0F766E]">Service completion</p>
+                  <h2 className="mt-1 text-xl font-bold text-[#14211F]">Submit final bill</h2>
+                  <p className="mt-1 text-xs text-[#55625F]">{finalBillBooking.serviceName} · {finalBillBooking.customer?.name || "Customer"}</p>
+                </div>
+                <button type="button" disabled={finalBillSaving} onClick={() => setFinalBillBooking(null)} className={`${btnGhost} !px-3`} aria-label="Close final bill"><X size={18} /></button>
+              </div>
+              <form onSubmit={(e) => void submitFinalBill(e)} className="space-y-5 p-5 sm:p-6">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {([
+                    ["Labour charge (₹)", billLabor, setBillLabor],
+                    ["Material charge (₹)", billMaterial, setBillMaterial],
+                    ["Other charges (₹)", billOther, setBillOther],
+                  ] as [string, string, (value: string) => void][]).map(([label, value, setter]) => (
+                    <label key={label} className="space-y-2 text-xs font-semibold text-[#33413E]">{label}
+                      <input className={inputClass} type="number" min="0" max="10000000" step="0.01" required value={value} disabled={finalBillSaving} onChange={(e) => setter(e.target.value)} placeholder="0.00" />
+                    </label>
+                  ))}
+                  <div className="space-y-2 text-xs font-semibold text-[#33413E]">Advance paid (₹)
+                    <div className="flex min-h-11 items-center rounded-xl border border-[#D5DEDB] bg-[#F7FAF9] px-4 text-sm font-bold">{money(finalBillBooking.amount)}</div>
+                  </div>
+                </div>
+                <label className="block space-y-2 text-xs font-semibold text-[#33413E]">Work description
+                  <textarea className={inputClass} rows={3} maxLength={2000} disabled={finalBillSaving} value={billDescription} onChange={(e) => setBillDescription(e.target.value)} placeholder="Describe the work completed and charges..." />
+                </label>
+                <div className="space-y-3 rounded-2xl bg-[#F2F6F5] p-4">
+                  <div className="flex justify-between text-sm"><span className="text-[#55625F]">Total service amount</span><strong>{money(billTotalPaise / 100)}</strong></div>
+                  <div className="flex justify-between text-sm"><span className="text-[#55625F]">Advance deducted</span><strong className="text-[#0F766E]">− {money(billAdvancePaise / 100)}</strong></div>
+                  <div className="flex justify-between border-t border-[#D5DEDB] pt-3"><strong>Remaining balance</strong><strong className={billBalancePaise < 0 ? "text-rose-700" : "text-[#0F766E]"}>{billBalancePaise < 0 ? "Below advance" : money(billBalancePaise / 100)}</strong></div>
+                </div>
+                <p className="text-xs text-[#55625F]">Submitting completes the service and sends the bill to the customer for approval. The backend verifies the advance and recalculates all amounts.</p>
+                {finalBillError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{finalBillError}</div>}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button type="button" className={btnGhost} disabled={finalBillSaving} onClick={() => setFinalBillBooking(null)}>Cancel</button>
+                  <button type="submit" className={btnPrimary} disabled={finalBillSaving || billBalancePaise < 0}>{finalBillSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Submit final bill</button>
+                </div>
+              </form>
+            </motion.section>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* BOOKING DETAILS DIALOG */}
       <AnimatePresence>

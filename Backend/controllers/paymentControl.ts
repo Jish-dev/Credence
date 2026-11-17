@@ -8,11 +8,33 @@ import Booking from "../models/Booking.js";
 import Payment from "../models/Payment.js";
 
 // ========================================
+// TYPES
+// ========================================
+
+type PaymentPurpose = "advance" | "balance";
+
+type RazorpayPaymentData = {
+  id: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  status?: string;
+  method?: string;
+  error_description?: string;
+  error_reason?: string;
+};
+
+// ========================================
 // VALIDATION HELPERS
 // ========================================
 
-const createPaymentValidation = (bookingId: string) =>
+const isValidBookingId = (bookingId: string) =>
   mongoose.Types.ObjectId.isValid(bookingId);
+
+const isValidPaymentPurpose = (
+  value: unknown
+): value is PaymentPurpose =>
+  value === "advance" || value === "balance";
 
 const verifySignature = (
   orderId: string,
@@ -52,6 +74,229 @@ const verifyWebhookSignature = (
 };
 
 // ========================================
+// PAYMENT PURPOSE HELPERS
+// ========================================
+
+// Old Payment records without purpose are treated as advance payments.
+const getPaymentPurpose = (payment: {
+  purpose?: PaymentPurpose;
+}): PaymentPurpose => payment.purpose ?? "advance";
+
+// ========================================
+// FIND VERIFIED ADVANCE PAYMENT
+// ========================================
+
+const findVerifiedAdvancePayment = async (
+  booking: {
+    _id: mongoose.Types.ObjectId;
+    customer: mongoose.Types.ObjectId;
+  },
+  session?: mongoose.ClientSession
+) => {
+  let query = Payment.findOne({
+    booking: booking._id,
+    customer: booking.customer,
+    status: "paid",
+    signatureVerified: true,
+    currency: "INR",
+    $or: [
+      { purpose: "advance" },
+      { purpose: { $exists: false } },
+      { purpose: null },
+    ],
+  }).sort({ createdAt: -1 });
+
+  if (session) {
+    query = query.session(session);
+  }
+
+  return query;
+};
+
+// ========================================
+// GET PAYMENT AMOUNT
+// ========================================
+
+const getPaymentAmountInRupees = (
+  booking: any,
+  purpose: PaymentPurpose
+): number => {
+  if (purpose === "advance") {
+    return Number(booking.amount);
+  }
+
+  return Number(booking.finalBill?.balanceAmount);
+};
+
+const getValidatedPaymentAmount = (
+  booking: any,
+  purpose: PaymentPurpose
+) => {
+  const amountInRupees = getPaymentAmountInRupees(
+    booking,
+    purpose
+  );
+
+  const amountInPaise = Math.round(amountInRupees * 100);
+
+  if (
+    !Number.isFinite(amountInRupees) ||
+    !Number.isSafeInteger(amountInPaise) ||
+    amountInPaise <= 0
+  ) {
+    throw new Error("Invalid payment amount");
+  }
+
+  return {
+    amountInRupees,
+    amountInPaise,
+  };
+};
+
+// ========================================
+// GET OVERALL BOOKING PAYMENT STATUS
+// ========================================
+
+const getBookingPaymentStatus = (
+  booking: any
+): "pending" | "paid" | "failed" => {
+  const upfrontPaid =
+    booking.upfrontPaymentStatus === "paid" ||
+    Number(booking.amount) === 0;
+
+  // IMPORTANT:
+  // A booking cannot become fully paid before its final bill exists.
+  const hasFinalBill = Boolean(booking.finalBill);
+
+  const balanceAmount = Number(
+    booking.finalBill?.balanceAmount ?? 0
+  );
+
+  const balancePaid =
+    hasFinalBill &&
+    (
+      balanceAmount <= 0 ||
+      booking.balancePaymentStatus === "paid"
+    );
+
+  if (upfrontPaid && balancePaid) {
+    return "paid";
+  }
+
+  return "pending";
+};
+
+// ========================================
+// CHECK PAYMENT ELIGIBILITY
+// ========================================
+
+const validatePaymentEligibility = async (
+  booking: any,
+  customerId: string,
+  purpose: PaymentPurpose,
+  session?: mongoose.ClientSession
+) => {
+  if (purpose === "advance") {
+    if (!["pending", "confirmed"].includes(booking.status)) {
+      throw new Error(
+        "Advance payment is available only for pending or confirmed bookings"
+      );
+    }
+
+    if (booking.upfrontPaymentStatus === "paid") {
+      throw new Error("Advance payment has already been completed");
+    }
+
+    const existingAdvance = await findVerifiedAdvancePayment(
+      booking,
+      session
+    );
+
+    if (existingAdvance) {
+      throw new Error("Advance payment has already been completed");
+    }
+
+    return;
+  }
+
+  // ====================================
+  // BALANCE PAYMENT
+  // ====================================
+
+  if (booking.status !== "completed") {
+    throw new Error("Service has not been completed yet");
+  }
+
+  if (!booking.finalBill) {
+    throw new Error("Final bill has not been submitted");
+  }
+
+  if (booking.finalBill.approvalStatus !== "approved") {
+    throw new Error(
+      "Customer must approve the final bill before balance payment"
+    );
+  }
+
+  if (booking.balancePaymentStatus === "paid") {
+    throw new Error("Balance payment has already been completed");
+  }
+
+  if (booking.upfrontPaymentStatus !== "paid") {
+    throw new Error(
+      "The booking advance payment has not been verified"
+    );
+  }
+
+  // Verify the actual successful advance payment record.
+  const advancePayment = await findVerifiedAdvancePayment(
+    booking,
+    session
+  );
+
+  if (!advancePayment) {
+    throw new Error(
+      "Verified advance payment record not found"
+    );
+  }
+
+  const expectedAdvancePaise = Math.round(
+    Number(booking.amount) * 100
+  );
+
+  if (
+    !Number.isSafeInteger(expectedAdvancePaise) ||
+    advancePayment.amount !== expectedAdvancePaise
+  ) {
+    throw new Error(
+      "Verified advance payment does not match the booking amount"
+    );
+  }
+
+  const balanceAmount = Number(
+    booking.finalBill.balanceAmount
+  );
+
+  if (
+    !Number.isFinite(balanceAmount) ||
+    balanceAmount <= 0
+  ) {
+    throw new Error("No remaining balance is due");
+  }
+
+  const successfulBalance = await Payment.findOne({
+    booking: booking._id,
+    customer: customerId,
+    purpose: "balance",
+    status: "paid",
+    signatureVerified: true,
+  }).session(session ?? null);
+
+  if (successfulBalance) {
+    throw new Error("Balance payment has already been completed");
+  }
+};
+
+// ========================================
 // RAZORPAY ORDER VERIFICATION
 // ========================================
 
@@ -70,7 +315,6 @@ const fetchAndVerifyRazorpayOrder = async (
     currency: order.currency,
     expectedAmount,
     expectedCurrency,
-    keyPrefix: process.env.RAZORPAY_KEY_ID?.slice(0, 12),
   });
 
   if (order.id !== orderId) {
@@ -90,7 +334,71 @@ const fetchAndVerifyRazorpayOrder = async (
 };
 
 // ========================================
+// UPDATE BOOKING AFTER SUCCESSFUL PAYMENT
+// ========================================
+
+const applySuccessfulPayment = async (
+  payment: any,
+  booking: any,
+  paymentId: string,
+  signature: string | undefined,
+  method: string,
+  session: mongoose.ClientSession
+) => {
+  const purpose = getPaymentPurpose(payment);
+
+  // Never apply the same Razorpay payment twice.
+  const duplicatePayment = await Payment.findOne({
+    razorpayPaymentId: paymentId,
+    _id: { $ne: payment._id },
+  }).session(session);
+
+  if (duplicatePayment) {
+    throw new Error(
+      "Razorpay payment ID is already linked to another payment"
+    );
+  }
+
+  payment.razorpayPaymentId = paymentId;
+
+  if (signature) {
+    payment.razorpaySignature = signature;
+  }
+
+  payment.status = "paid";
+  payment.signatureVerified = true;
+  payment.method = method || "";
+  payment.failureReason = "";
+
+  await payment.save({ session });
+
+  if (purpose === "advance") {
+    booking.upfrontPaymentStatus = "paid";
+    booking.upfrontPaymentId = payment._id;
+  } else {
+    booking.balancePaymentStatus = "paid";
+    booking.balancePaymentId = payment._id;
+  }
+
+  // Keep legacy payment reference.
+  booking.paymentId = payment._id;
+
+  const overallStatus = getBookingPaymentStatus(booking);
+
+  booking.paymentStatus = overallStatus;
+
+  if (overallStatus === "paid") {
+    booking.paidAt = new Date();
+  } else {
+    booking.paidAt = null;
+  }
+
+  await booking.save({ session });
+};
+
+// ========================================
 // CREATE RAZORPAY ORDER
+// POST /api/v1/payments/create-order
 // ========================================
 
 export const createPaymentOrder = async (
@@ -101,6 +409,13 @@ export const createPaymentOrder = async (
   try {
     const customerId = req.user?.id;
     const { bookingId } = req.body;
+
+    // Backward compatibility:
+    // Requests without purpose are treated as advance payments.
+    const purpose: PaymentPurpose =
+      req.body.purpose === undefined
+        ? "advance"
+        : req.body.purpose;
 
     const keyId = process.env.RAZORPAY_KEY_ID;
 
@@ -117,11 +432,18 @@ export const createPaymentOrder = async (
 
     if (
       typeof bookingId !== "string" ||
-      !createPaymentValidation(bookingId)
+      !isValidBookingId(bookingId)
     ) {
       return res.status(400).json({
         success: false,
         message: "Valid booking ID is required",
+      });
+    }
+
+    if (!isValidPaymentPurpose(purpose)) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment purpose must be advance or balance",
       });
     }
 
@@ -137,67 +459,62 @@ export const createPaymentOrder = async (
       });
     }
 
-    // Payment is allowed only after customer confirms completion.
-    if (booking.status !== "completed") {
-      return res.status(400).json({
-        success: false,
-        message: "Payment is available only after service completion",
-      });
-    }
-
-    if (booking.paymentStatus === "paid") {
-      return res.status(400).json({
-        success: false,
-        message: "This booking has already been paid",
-      });
-    }
-
-    const successfulPayment = await Payment.findOne({
-      booking: booking._id,
-      status: "paid",
-    });
-
-    if (successfulPayment) {
-      return res.status(400).json({
-        success: false,
-        message: "This booking has already been paid",
-      });
-    }
+    await validatePaymentEligibility(
+      booking,
+      customerId,
+      purpose
+    );
 
     // ====================================
-    // VALIDATE BOOKING AMOUNT
+    // VALIDATE PAYMENT AMOUNT
     // ====================================
 
-    const bookingAmount = Number(booking.amount);
-    const amountInPaise = Math.round(bookingAmount * 100);
+    let amountInPaise: number;
 
-    if (
-      !Number.isFinite(bookingAmount) ||
-      !Number.isSafeInteger(amountInPaise) ||
-      amountInPaise <= 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid booking payment amount",
-      });
-    }
-
-    // ====================================
-    // CHECK EXISTING PAYMENT ORDER
-    // ====================================
-
-    const existingPayment = await Payment.findOne({
-      booking: booking._id,
-      customer: customerId,
-      status: "created",
-    }).sort({ createdAt: -1 });
-
-    if (existingPayment) {
-      console.log(
-        "CREDENCE: Existing payment order found:",
-        existingPayment.razorpayOrderId
+    try {
+      const amount = getValidatedPaymentAmount(
+        booking,
+        purpose
       );
 
+      amountInPaise = amount.amountInPaise;
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Invalid payment amount",
+      });
+    }
+
+    // ====================================
+    // FIND EXISTING PAYMENT ORDER
+    // ====================================
+
+    let existingPayment;
+
+    if (purpose === "advance") {
+      existingPayment = await Payment.findOne({
+        booking: booking._id,
+        customer: customerId,
+        status: "created",
+        $or: [
+          { purpose: "advance" },
+          { purpose: { $exists: false } },
+          { purpose: null },
+        ],
+      }).sort({ createdAt: -1 });
+    } else {
+      existingPayment = await Payment.findOne({
+        booking: booking._id,
+        customer: customerId,
+        status: "created",
+        purpose: "balance",
+      }).sort({ createdAt: -1 });
+    }
+
+    if (existingPayment) {
       try {
         const verifiedOrder = await fetchAndVerifyRazorpayOrder(
           existingPayment.razorpayOrderId,
@@ -205,25 +522,21 @@ export const createPaymentOrder = async (
           existingPayment.currency
         );
 
-        // Never create another order if Razorpay says this order
-        // has already been paid.
         if (verifiedOrder.status === "paid") {
           return res.status(409).json({
             success: false,
             message:
-              "This Razorpay order is already paid. Please refresh your bookings and check payment status.",
+              "This Razorpay order is already paid. Please refresh and check the payment status.",
           });
         }
 
-        // Reuse only an active, unpaid order.
         if (verifiedOrder.status === "created") {
-          // Also ensure this order matches the current booking amount.
           if (
             verifiedOrder.amount !== amountInPaise ||
             verifiedOrder.currency !== "INR"
           ) {
             throw new Error(
-              "Existing order does not match the current booking amount"
+              "Existing order does not match the current payment amount"
             );
           }
 
@@ -236,6 +549,7 @@ export const createPaymentOrder = async (
               amount: verifiedOrder.amount,
               currency: verifiedOrder.currency,
               keyId,
+              purpose,
             },
           });
         }
@@ -249,8 +563,6 @@ export const createPaymentOrder = async (
           error
         );
 
-        // Mark the unusable attempt as failed so it is not reused.
-        // A new order will be created below.
         existingPayment.status = "failed";
         existingPayment.failureReason =
           error instanceof Error
@@ -258,42 +570,24 @@ export const createPaymentOrder = async (
             : "Existing Razorpay order could not be verified";
 
         await existingPayment.save();
-
-        console.log(
-          "CREDENCE: Old payment attempt marked as failed. Creating a new order."
-        );
       }
     }
 
     // ====================================
-    // CREATE NEW PAYMENT ORDER
+    // CREATE NEW RAZORPAY ORDER
     // ====================================
-
-    console.log("CREDENCE: Creating new Razorpay order:", {
-      bookingId: booking._id.toString(),
-      amount: amountInPaise,
-      currency: "INR",
-      keyPrefix: keyId.slice(0, 12),
-    });
 
     const razorpayOrder = await razorpay.orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: `booking_${booking._id}`,
+      receipt: `b${booking._id.toString().slice(-12)}_${purpose}_${Date.now()}`,
       notes: {
         bookingId: booking._id.toString(),
         customerId,
+        purpose,
       },
     });
 
-    console.log("CREDENCE: Razorpay order created:", {
-      orderId: razorpayOrder.id,
-      amount: razorpayOrder.amount,
-      currency: razorpayOrder.currency,
-      status: razorpayOrder.status,
-    });
-
-    // Verify the newly created order using the same credentials.
     const verifiedOrder = await fetchAndVerifyRazorpayOrder(
       razorpayOrder.id,
       amountInPaise,
@@ -313,6 +607,7 @@ export const createPaymentOrder = async (
     const payment = await Payment.create({
       customer: customerId,
       booking: booking._id,
+      purpose,
       razorpayOrderId: verifiedOrder.id,
       amount: Number(verifiedOrder.amount),
       currency: verifiedOrder.currency,
@@ -320,35 +615,13 @@ export const createPaymentOrder = async (
       signatureVerified: false,
     });
 
-    // ====================================
-    // UPDATE BOOKING PAYMENT DETAILS
-    // ====================================
-
-    const updatedBooking = await Booking.findOneAndUpdate(
-      {
-        _id: booking._id,
-        customer: customerId,
-        status: "completed",
-        paymentStatus: { $in: ["pending", "failed"] },
-      },
-      {
-        $set: {
-          paymentStatus: "pending",
-          paymentId: payment._id,
-          paidAt: null,
-        },
-      },
-      { new: true }
-    );
-
-    if (!updatedBooking) {
-      await Payment.deleteOne({ _id: payment._id });
-
-      return res.status(400).json({
-        success: false,
-        message: "Booking is no longer eligible for payment",
-      });
+    if (purpose === "advance") {
+      booking.upfrontPaymentStatus = "pending";
+    } else {
+      booking.balancePaymentStatus = "pending";
     }
+
+    await booking.save();
 
     return res.status(201).json({
       success: true,
@@ -359,6 +632,7 @@ export const createPaymentOrder = async (
         amount: verifiedOrder.amount,
         currency: verifiedOrder.currency,
         keyId,
+        purpose,
       },
     });
   } catch (error) {
@@ -369,6 +643,7 @@ export const createPaymentOrder = async (
 
 // ========================================
 // VERIFY RAZORPAY PAYMENT
+// POST /api/v1/payments/verify-payment
 // ========================================
 
 export const verifyPayment = async (
@@ -426,7 +701,10 @@ export const verifyPayment = async (
       });
     }
 
-    // Verify Checkout signature.
+    // ====================================
+    // VERIFY CHECKOUT SIGNATURE
+    // ====================================
+
     if (
       !verifySignature(
         razorpay_order_id,
@@ -441,7 +719,10 @@ export const verifyPayment = async (
       });
     }
 
-    // Verify actual payment details with Razorpay.
+    // ====================================
+    // VERIFY PAYMENT WITH RAZORPAY
+    // ====================================
+
     const razorpayPayment = await razorpay.payments.fetch(
       razorpay_payment_id
     );
@@ -458,9 +739,14 @@ export const verifyPayment = async (
       });
     }
 
+    // ====================================
+    // DATABASE TRANSACTION
+    // ====================================
+
     session = await mongoose.startSession();
 
     let alreadyProcessed = false;
+    let finalBookingPaymentStatus = "pending";
 
     await session.withTransaction(async () => {
       const payment = await Payment.findOne({
@@ -481,14 +767,15 @@ export const verifyPayment = async (
         throw new Error("Related booking not found");
       }
 
-      // Idempotency: same successful payment should not be processed twice.
+      const purpose = getPaymentPurpose(payment);
+
+      // Idempotency.
       if (
         payment.status === "paid" &&
-        payment.razorpayPaymentId === razorpay_payment_id &&
-        booking.paymentStatus === "paid" &&
-        booking.paymentId?.toString() === payment._id.toString()
+        payment.razorpayPaymentId === razorpay_payment_id
       ) {
         alreadyProcessed = true;
+        finalBookingPaymentStatus = booking.paymentStatus;
         return;
       }
 
@@ -501,14 +788,6 @@ export const verifyPayment = async (
         );
       }
 
-      if (booking.status !== "completed") {
-        throw new Error("Booking is not completed");
-      }
-
-      if (booking.paymentStatus === "paid") {
-        throw new Error("Booking has already been paid");
-      }
-
       const duplicatePayment = await Payment.findOne({
         razorpayPaymentId: razorpay_payment_id,
         _id: { $ne: payment._id },
@@ -518,22 +797,35 @@ export const verifyPayment = async (
         throw new Error("Razorpay payment ID is already linked");
       }
 
-      payment.razorpayPaymentId = razorpay_payment_id;
-      payment.razorpaySignature = razorpay_signature;
-      payment.status = "paid";
-      payment.signatureVerified = true;
-      payment.method = razorpayPayment.method || "";
-      payment.failureReason = "";
+      // Recheck eligibility inside the transaction.
+      await validatePaymentEligibility(
+        booking,
+        customerId,
+        purpose,
+        session
+      );
 
-      await payment.save({ session: session! });
+      const expectedAmount = getValidatedPaymentAmount(
+        booking,
+        purpose
+      );
 
-      // Update payment fields only.
-      // Do not change booking.status here.
-      booking.paymentStatus = "paid";
-      booking.paymentId = payment._id;
-      booking.paidAt = new Date();
+      if (payment.amount !== expectedAmount.amountInPaise) {
+        throw new Error(
+          "Payment amount does not match the current booking amount"
+        );
+      }
 
-      await booking.save({ session: session! });
+      await applySuccessfulPayment(
+        payment,
+        booking,
+        razorpay_payment_id,
+        razorpay_signature,
+        razorpayPayment.method || "",
+        session!
+      );
+
+      finalBookingPaymentStatus = booking.paymentStatus;
     });
 
     return res.status(200).json({
@@ -544,13 +836,15 @@ export const verifyPayment = async (
       data: {
         paymentId: paymentRecord._id,
         razorpayPaymentId: razorpay_payment_id,
+        purpose: getPaymentPurpose(paymentRecord),
         paymentStatus: "paid",
-        bookingPaymentStatus: "paid",
+        bookingPaymentStatus: finalBookingPaymentStatus,
         amount: paymentRecord.amount,
         currency: paymentRecord.currency,
       },
     });
   } catch (error) {
+    console.error("CREDENCE VERIFY PAYMENT ERROR:", error);
     next(error);
   } finally {
     if (session) {
@@ -617,7 +911,8 @@ export const handleRazorpayWebhook = async (
       });
     }
 
-    const razorpayPayment = event.payload?.payment?.entity;
+    const razorpayPayment =
+      event.payload?.payment?.entity as RazorpayPaymentData | undefined;
 
     if (
       !razorpayPayment ||
@@ -635,9 +930,9 @@ export const handleRazorpayWebhook = async (
     });
 
     if (!paymentRecord) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment record not found",
+      return res.status(200).json({
+        success: true,
+        message: "Payment record not found; event ignored",
       });
     }
 
@@ -672,16 +967,16 @@ export const handleRazorpayWebhook = async (
         throw new Error("Related booking not found");
       }
 
-      // ------------------------------------
+      const purpose = getPaymentPurpose(payment);
+
+      // ====================================
       // PAYMENT CAPTURED
-      // ------------------------------------
+      // ====================================
 
       if (eventType === "payment.captured") {
         if (
           payment.status === "paid" &&
-          payment.razorpayPaymentId === razorpayPayment.id &&
-          booking.paymentStatus === "paid" &&
-          booking.paymentId?.toString() === payment._id.toString()
+          payment.razorpayPaymentId === razorpayPayment.id
         ) {
           alreadyProcessed = true;
           return;
@@ -694,14 +989,6 @@ export const handleRazorpayWebhook = async (
           throw new Error("Payment is not eligible for capture");
         }
 
-        if (booking.status !== "completed") {
-          throw new Error("Booking is not completed");
-        }
-
-        if (booking.paymentStatus === "paid") {
-          throw new Error("Booking is already paid through another payment");
-        }
-
         const duplicatePayment = await Payment.findOne({
           razorpayPaymentId: razorpayPayment.id,
           _id: { $ne: payment._id },
@@ -711,25 +998,38 @@ export const handleRazorpayWebhook = async (
           throw new Error("Razorpay payment ID is already linked");
         }
 
-        payment.razorpayPaymentId = razorpayPayment.id;
-        payment.status = "paid";
-        payment.signatureVerified = true;
-        payment.method = razorpayPayment.method || "";
-        payment.failureReason = "";
+        const expectedAmount = getValidatedPaymentAmount(
+          booking,
+          purpose
+        );
 
-        await payment.save({ session: session! });
+        if (payment.amount !== expectedAmount.amountInPaise) {
+          throw new Error(
+            "Captured payment amount does not match the booking"
+          );
+        }
 
-        // Keep booking service status as completed.
-        booking.paymentStatus = "paid";
-        booking.paymentId = payment._id;
-        booking.paidAt = new Date();
+        // Recheck eligibility, including verified advance payment.
+        await validatePaymentEligibility(
+          booking,
+          booking.customer.toString(),
+          purpose,
+          session
+        );
 
-        await booking.save({ session: session! });
+        await applySuccessfulPayment(
+          payment,
+          booking,
+          razorpayPayment.id,
+          undefined,
+          razorpayPayment.method || "",
+          session!
+        );
       }
 
-      // ------------------------------------
+      // ====================================
       // PAYMENT FAILED
-      // ------------------------------------
+      // ====================================
 
       if (eventType === "payment.failed") {
         // Never downgrade a successful payment.
@@ -769,14 +1069,23 @@ export const handleRazorpayWebhook = async (
 
         await payment.save({ session: session! });
 
-        // Only update the booking if this is still its current attempt.
-        if (
-          booking.paymentStatus !== "paid" &&
-          booking.paymentId?.toString() === payment._id.toString()
-        ) {
-          booking.paymentStatus = "failed";
-          await booking.save({ session: session! });
+        if (purpose === "advance") {
+          if (booking.upfrontPaymentStatus !== "paid") {
+            booking.upfrontPaymentStatus = "failed";
+          }
+        } else {
+          if (booking.balancePaymentStatus !== "paid") {
+            booking.balancePaymentStatus = "failed";
+          }
         }
+
+        booking.paymentStatus = getBookingPaymentStatus(booking);
+
+        if (booking.paymentStatus !== "paid") {
+          booking.paidAt = null;
+        }
+
+        await booking.save({ session: session! });
       }
     });
 

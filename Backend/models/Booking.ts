@@ -1,3 +1,4 @@
+
 import mongoose, { Model, Schema } from "mongoose";
 
 export type BookingType = "on_demand" | "pre_booking";
@@ -22,10 +23,27 @@ export type ProviderTravelStatus =
   | "arrived"
   | "stopped";
 
+export type PricingType = "starting_price" | "booking_advance";
+
+export type BillApprovalStatus = "pending" | "approved";
+
 export interface IProviderLocation {
   latitude: number;
   longitude: number;
   updatedAt: Date;
+}
+
+export interface IFinalBill {
+  laborCharge: number;
+  materialCharge: number;
+  otherCharges: number;
+  totalAmount: number;
+  advanceDeducted: number;
+  balanceAmount: number;
+  description: string;
+  approvalStatus: BillApprovalStatus;
+  submittedAt: Date;
+  approvedAt: Date | null;
 }
 
 export interface IBooking {
@@ -43,21 +61,33 @@ export interface IBooking {
 
   location: string;
   contactPhone: string;
+
+  // Upfront amount agreed at booking time (in rupees).
   amount: number;
+  pricingType: PricingType;
 
   status: BookingStatus;
 
   providerCompletedAt: Date | null;
   customerConfirmedAt: Date | null;
 
+  // Overall payment status (kept for compatibility).
   paymentStatus: BookingPaymentStatus;
   paymentId: mongoose.Types.ObjectId | null;
   paidAt: Date | null;
 
+  // Upfront payment.
+  upfrontPaymentStatus: BookingPaymentStatus;
+  upfrontPaymentId: mongoose.Types.ObjectId | null;
+
+  // Final bill and balance payment.
+  finalBill: IFinalBill | null;
+  balancePaymentStatus: BookingPaymentStatus;
+  balancePaymentId: mongoose.Types.ObjectId | null;
+
   providerNote: string;
 
   providerTravelStatus: ProviderTravelStatus;
-
   providerLocation: IProviderLocation | null;
 
   trackingStartedAt: Date | null;
@@ -66,6 +96,73 @@ export interface IBooking {
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+const finalBillSchema = new Schema<IFinalBill>(
+  {
+    laborCharge: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    materialCharge: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    otherCharges: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    advanceDeducted: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    balanceAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    description: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: 2000,
+    },
+
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved"],
+      default: "pending",
+      required: true,
+    },
+
+    submittedAt: {
+      type: Date,
+      required: true,
+    },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  }
+);
 
 const bookingSchema = new Schema<IBooking>(
   {
@@ -130,10 +227,18 @@ const bookingSchema = new Schema<IBooking>(
       trim: true,
     },
 
+    // This is the upfront amount collected during booking.
     amount: {
       type: Number,
       min: 0,
       default: 0,
+    },
+
+    pricingType: {
+      type: String,
+      enum: ["starting_price", "booking_advance"],
+      default: "starting_price",
+      required: true,
     },
 
     status: {
@@ -160,6 +265,7 @@ const bookingSchema = new Schema<IBooking>(
       default: null,
     },
 
+    // Overall payment status.
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed", "refunded"],
@@ -175,6 +281,40 @@ const bookingSchema = new Schema<IBooking>(
 
     paidAt: {
       type: Date,
+      default: null,
+    },
+
+    // Upfront payment details.
+    upfrontPaymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed", "refunded"],
+      default: "pending",
+      index: true,
+    },
+
+    upfrontPaymentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+
+    // Final bill submitted by the provider.
+    finalBill: {
+      type: finalBillSchema,
+      default: null,
+    },
+
+    // Remaining balance payment details.
+    balancePaymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed", "refunded"],
+      default: "pending",
+      index: true,
+    },
+
+    balancePaymentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Payment",
       default: null,
     },
 
@@ -236,6 +376,7 @@ bookingSchema.index({ provider: 1, bookingDate: 1 });
 bookingSchema.index({ status: 1, bookingDate: 1 });
 bookingSchema.index({ paymentStatus: 1, createdAt: -1 });
 bookingSchema.index({ provider: 1, status: 1, createdAt: -1 });
+
 const Booking: Model<IBooking> =
   (mongoose.models.Booking as Model<IBooking>) ||
   mongoose.model<IBooking>("Booking", bookingSchema);

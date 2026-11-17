@@ -2,11 +2,13 @@
 import mongoose, { Model, Schema, Types } from "mongoose";
 
 export type PaymentStatus = "created" | "paid" | "failed" | "refunded";
+export type PaymentPurpose = "advance" | "balance";
 
 export interface IPayment {
   _id: Types.ObjectId;
   customer: Types.ObjectId;
   booking: Types.ObjectId;
+  purpose: PaymentPurpose;
   razorpayPaymentId?: string;
   razorpayOrderId: string;
   razorpaySignature?: string;
@@ -27,44 +29,62 @@ const paymentSchema = new Schema<IPayment>(
       ref: "User",
       required: true,
     },
+
     booking: {
       type: Schema.Types.ObjectId,
       ref: "Booking",
       required: true,
     },
+
+    purpose: {
+      type: String,
+      enum: ["advance", "balance"],
+      default: "advance",
+      required: true,
+      index: true,
+    },
+
     razorpayPaymentId: {
       type: String,
     },
+
     razorpayOrderId: {
       type: String,
       required: true,
       unique: true,
     },
+
     razorpaySignature: {
       type: String,
     },
+
     amount: {
       type: Number,
       required: true,
       min: 1,
     },
+
     currency: {
       type: String,
       required: true,
       default: "INR",
     },
+
     status: {
       type: String,
       enum: ["created", "paid", "failed", "refunded"],
       default: "created",
       index: true,
     },
+
     method: {
       type: String,
     },
+
     failureReason: {
       type: String,
     },
+
     signatureVerified: {
       type: Boolean,
       required: true,
@@ -78,6 +98,7 @@ const paymentSchema = new Schema<IPayment>(
 
 paymentSchema.index({ customer: 1, createdAt: -1 });
 paymentSchema.index({ booking: 1, createdAt: -1 });
+paymentSchema.index({ booking: 1, purpose: 1, status: 1 });
 
 // Prevent one Razorpay payment from being linked to multiple records.
 paymentSchema.index(
@@ -88,8 +109,12 @@ paymentSchema.index(
   }
 );
 
+const existingPaymentModel = mongoose.models.Payment as
+  | Model<IPayment>
+  | undefined;
+
 const Payment: Model<IPayment> =
-  (mongoose.models.Payment as Model<IPayment>) ||
+  existingPaymentModel ??
   mongoose.model<IPayment>("Payment", paymentSchema);
 
 export default Payment;
