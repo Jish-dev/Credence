@@ -29,6 +29,10 @@ type Provider = {
   category?: string;
   categories?: string[];
   location?: string;
+  latitude?: number;
+  longitude?: number;
+  coordinates?: [number, number]; // GeoJSON order: longitude, latitude
+  geoLocation?: { coordinates?: [number, number] };
   city?: string;
   address?: string;
   averageRating?: number;
@@ -95,7 +99,24 @@ function providerMatchesCategory(provider: Provider, selected: string): boolean 
   );
 }
 
-const LOCATIONS = ["All Locations", "Malappuram", "Manjeri", "Nilambur", "Perinthalmanna", "Kondotty", "Kochi", "Calicut"];
+type LocationResult = { place_id?: number; display_name: string; lat: string; lon: string; address?: { city?: string; county?: string; state?: string; country?: string } };
+const validCoordinate = (lat: number, lon: number) => Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+
+type Coordinates = { latitude: number; longitude: number };
+function providerCoordinates(provider: Provider): Coordinates | null {
+  const pair = provider.geoLocation?.coordinates ?? provider.coordinates;
+  const latitude = Number(provider.latitude ?? pair?.[1]);
+  const longitude = Number(provider.longitude ?? pair?.[0]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return { latitude, longitude };
+}
+function distanceKm(a: Coordinates, b: Coordinates): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.latitude - a.latitude) * rad;
+  const dLon = (b.longitude - a.longitude) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
 
 function providerId(provider: Provider) {
   return provider._id || provider.id || "";
@@ -145,6 +166,8 @@ export default function AllProf() {
   const urlCategory = searchParams.get("category") || "";
   const urlSearch = searchParams.get("search") || searchParams.get("q") || "";
   const urlLocation = searchParams.get("location") || "";
+  const urlLat = searchParams.get("lat") || "";
+  const urlLon = searchParams.get("lon") || "";
   const [professionals, setProfessionals] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -152,6 +175,15 @@ export default function AllProf() {
   const [searchTerm, setSearchTerm] = useState(urlSearch);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(() => urlCategory ? [canonicalCategory(urlCategory)] : []);
   const [location, setLocation] = useState(urlLocation || "All Locations");
+  const [customerCoordinates, setCustomerCoordinates] = useState<Coordinates | null>(() => {
+    const lat = Number(urlLat), lon = Number(urlLon);
+    return urlLat && urlLon && validCoordinate(lat, lon) ? { latitude: lat, longitude: lon } : null;
+  });
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationSelected, setLocationSelected] = useState(Boolean(urlLat && urlLon));
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState("");
   const [ratingFilter, setRatingFilter] = useState<number | null>(null);
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sortBy, setSortBy] = useState("Highest Rated");
@@ -171,7 +203,12 @@ export default function AllProf() {
     setSearchInput(urlSearch);
     setSearchTerm(urlSearch);
     setLocation(urlLocation || "All Locations");
-  }, [urlCategory, urlSearch, urlLocation]);
+    const lat = Number(urlLat), lon = Number(urlLon);
+    const coords = urlLat && urlLon && validCoordinate(lat, lon) ? { latitude: lat, longitude: lon } : null;
+    setCustomerCoordinates(coords);
+    setLocationSelected(Boolean(coords));
+    if (coords) setSortBy("Nearest First");
+  }, [urlCategory, urlSearch, urlLocation, urlLat, urlLon]);
 
   const updateUrlFilters = (updates: Record<string, string | null>) => {
     const next = new URLSearchParams(searchParams);
@@ -180,6 +217,76 @@ export default function AllProf() {
       else next.delete(key);
     });
     setSearchParams(next);
+  };
+
+  // Same Photon/OpenStreetMap autocomplete used by CREDENCE Home.tsx.
+  useEffect(() => {
+    if (locationSelected || location.trim().length < 2 || location === "All Locations") {
+      setLocationResults([]);
+      setLocationLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLocationLoading(true);
+      try {
+        const params = new URLSearchParams({ q: location.trim(), limit: "5", lang: "en" });
+        const response = await fetch(`https://photon.komoot.io/api/?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error("Location search failed");
+        const data = await response.json();
+        const results: LocationResult[] = (data.features || [])
+          .filter((feature: any) => !feature.properties?.country || String(feature.properties.country).toLowerCase() === "india")
+          .map((feature: any) => {
+            const props = feature.properties || {};
+            const coords = feature.geometry?.coordinates || [];
+            const city = props.city || props.town || props.village || props.county;
+            const display_name = [props.name, city !== props.name ? city : undefined, props.state, props.country]
+              .filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(", ");
+            return { place_id: props.osm_id, display_name, lat: String(coords[1] ?? ""), lon: String(coords[0] ?? ""), address: { city, county: props.county, state: props.state, country: props.country } };
+          })
+          .filter((item: LocationResult) => item.display_name && item.lat && item.lon);
+        if (!controller.signal.aborted) { setLocationResults(results); setLocationError(results.length ? "" : "No matching locations found."); }
+      } catch (err) {
+        if (!controller.signal.aborted) { setLocationResults([]); setLocationError("Unable to search locations right now."); }
+      } finally { if (!controller.signal.aborted) setLocationLoading(false); }
+    }, 350);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [location, locationSelected]);
+
+  const selectLocation = (result: LocationResult) => {
+    const latitude = Number(result.lat), longitude = Number(result.lon);
+    if (!validCoordinate(latitude, longitude)) return;
+    setLocation(result.display_name);
+    setCustomerCoordinates({ latitude, longitude });
+    setLocationSelected(true);
+    setLocationResults([]);
+    setLocationError("");
+    setSortBy("Nearest First");
+    updateUrlFilters({ location: result.display_name, lat: String(latitude), lon: String(longitude) });
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError("Your browser does not support location services.");
+      return;
+    }
+    setLocating(true);
+    setLocationError("");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setCustomerCoordinates({ latitude: coords.latitude, longitude: coords.longitude });
+        setLocation("All Locations");
+        setLocationSelected(true);
+        updateUrlFilters({ location: null, lat: String(coords.latitude), lon: String(coords.longitude) });
+        setSortBy("Nearest First");
+        setLocating(false);
+      },
+      (error) => {
+        setLocating(false);
+        setLocationError(error.code === 1 ? "Location permission denied. Enable location access in your browser." : "Could not determine your location. Try again or select a city.");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
   };
 
   const pageSize = 8;
@@ -233,11 +340,22 @@ export default function AllProf() {
       });
     }
 
-    if (location !== "All Locations") {
-      result = result.filter((provider) => providerLocation(provider).toLowerCase().includes(location.toLowerCase()));
+    if (location !== "All Locations" && !customerCoordinates) {
+      const parts = location.toLowerCase().split(",").map((part) => part.trim()).filter((part) => part.length > 2 && part !== "india" && part !== "kerala");
+      result = result.filter((provider) => parts.some((part) => providerLocation(provider).toLowerCase().includes(part)));
     }
     if (ratingFilter !== null) result = result.filter((provider) => providerRating(provider) >= ratingFilter);
     if (availableOnly) result = result.filter(isAvailableToday);
+
+    if (sortBy === "Nearest First" && customerCoordinates) {
+      result.sort((a, b) => {
+        const aCoords = providerCoordinates(a);
+        const bCoords = providerCoordinates(b);
+        return (aCoords ? distanceKm(customerCoordinates, aCoords) : Infinity) -
+          (bCoords ? distanceKm(customerCoordinates, bCoords) : Infinity);
+      });
+      return result;
+    }
 
     switch (sortBy) {
       case "Lowest Price":
@@ -253,7 +371,7 @@ export default function AllProf() {
         result.sort((a, b) => providerRating(b) - providerRating(a));
     }
     return result;
-  }, [professionals, searchTerm, selectedCategories, location, ratingFilter, availableOnly, sortBy]);
+  }, [professionals, searchTerm, selectedCategories, location, ratingFilter, availableOnly, sortBy, customerCoordinates]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProfessionals.length / pageSize));
   const visibleProfessionals = filteredProfessionals.slice((page - 1) * pageSize, page * pageSize);
@@ -283,11 +401,13 @@ export default function AllProf() {
   const clearFilters = () => {
     setSelectedCategories([]);
     setLocation("All Locations");
+    setCustomerCoordinates(null);
+    setLocationError("");
     setRatingFilter(null);
     setAvailableOnly(false);
     setSearchInput("");
     setSearchTerm("");
-    updateUrlFilters({ category: null, location: null, search: null, q: null });
+    updateUrlFilters({ category: null, location: null, lat: null, lon: null, search: null, q: null });
   };
 
   const openProfile = (provider: Provider) => {
@@ -391,23 +511,44 @@ export default function AllProf() {
               <MapPin size={19} /> Location
             </h3>
             <div className="relative">
-              <select
-                aria-label="Location"
-                value={location}
-                onChange={(event) => {
-                  const nextLocation = event.target.value;
-                  setLocation(nextLocation);
-                  updateUrlFilters({ location: nextLocation === "All Locations" ? null : nextLocation });
-                }}
-                className="w-full appearance-none rounded-xl border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
-              >
-                {!LOCATIONS.includes(location) && <option value={location}>{location}</option>}
-                {LOCATIONS.map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-              <ChevronDown size={17} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 focus-within:border-emerald-600 focus-within:ring-2 focus-within:ring-emerald-100">
+                <MapPin size={17} className="shrink-0 text-emerald-700" />
+                <input
+                  type="text"
+                  aria-label="Search location"
+                  value={location === "All Locations" ? "" : location}
+                  onChange={(event) => {
+                    setLocation(event.target.value);
+                    setLocationSelected(false);
+                    setCustomerCoordinates(null);
+                    setLocationError("");
+                    if (sortBy === "Nearest First") setSortBy("Highest Rated");
+                    updateUrlFilters({ location: event.target.value || null, lat: null, lon: null });
+                  }}
+                  placeholder="City, town or area..."
+                  autoComplete="off"
+                  className="min-w-0 w-full py-2.5 text-sm outline-none"
+                />
+                {locationLoading && <Loader2 size={16} className="animate-spin text-emerald-700" />}
+              </div>
+              {locationResults.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                  {locationResults.map((result, index) => (
+                    <button type="button" key={`${result.place_id ?? index}-${result.lat}-${result.lon}`} onClick={() => selectLocation(result)}
+                      className="flex w-full items-start gap-2 px-3 py-2.5 text-left text-xs text-slate-700 hover:bg-emerald-50">
+                      <MapPin size={15} className="mt-0.5 shrink-0 text-emerald-700" />
+                      <span>{result.display_name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+            <button type="button" onClick={useMyLocation} disabled={locating} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-700 px-3 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 disabled:opacity-50">
+              {locating ? <Loader2 size={16} className="animate-spin" /> : <MapPin size={16} />}
+              {locating ? "Finding your location..." : customerCoordinates ? "Update My Location" : "Use My Location"}
+            </button>
+            {customerCoordinates && <p className="mt-2 text-xs text-emerald-800">GPS location active · nearest providers first when coordinates are available</p>}
+            {locationError && <p role="alert" className="mt-2 text-xs text-rose-700">{locationError}</p>}
           </div>
 
           {/* Rating */}
@@ -497,6 +638,7 @@ export default function AllProf() {
                   onChange={(event) => setSortBy(event.target.value)}
                   className="appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pl-3 pr-9 text-sm outline-none focus:border-emerald-600"
                 >
+                  {customerCoordinates && <option>Nearest First</option>}
                   <option>Highest Rated</option>
                   <option>Most Reviewed</option>
                   <option>Lowest Price</option>
@@ -630,6 +772,9 @@ export default function AllProf() {
                         <span className="flex min-w-0 items-center gap-1.5 text-slate-700">
                           <MapPin size={14} className="shrink-0 fill-slate-700 text-white" />
                           <span className="truncate">{providerLocation(provider)}</span>
+                          {customerCoordinates && providerCoordinates(provider) && (
+                            <span className="shrink-0 font-semibold text-emerald-800">· {distanceKm(customerCoordinates, providerCoordinates(provider)!).toFixed(1)} km</span>
+                          )}
                         </span>
                         
                       </div>
