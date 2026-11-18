@@ -1074,51 +1074,49 @@ export default function ProviderDashboard() {
   }
 
   // Cloudinary unsigned upload. Needs VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET.
-  async function handleProfileImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
+  
+async function handleProfileImageUpload(
+  event: ChangeEvent<HTMLInputElement>
+) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
 
-    setImageUploadError("");
-    if (!file.type.startsWith("image/")) {
-      setImageUploadError("Please choose an image file (JPG, PNG, WEBP).");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setImageUploadError("Image size must be 5 MB or less.");
-      return;
-    }
+  if (!file) return;
 
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-    if (!cloudName || !uploadPreset) {
-      setImageUploadError("Cloudinary is not configured. Add the cloud name and unsigned upload preset to your frontend .env file.");
-      return;
-    }
+  setImageUploadError("");
 
-    setImageUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", uploadPreset);
-      formData.append("folder", "credence/providers");
-
-      const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      const result = await uploadResponse.json();
-      if (!uploadResponse.ok) throw new Error(result?.error?.message || "Cloudinary image upload failed.");
-      if (!result?.secure_url) throw new Error("Cloudinary did not return a secure image URL.");
-
-      updateProfileField("profileImage", result.secure_url);
-      notify("Profile image uploaded. Save your profile to apply the change.");
-    } catch (err: unknown) {
-      setImageUploadError(getErrorMessage(err));
-    } finally {
-      setImageUploading(false);
-    }
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    setImageUploadError("Please choose a JPG, PNG, or WEBP image.");
+    return;
   }
+
+  if (file.size > 5 * 1024 * 1024) {
+    setImageUploadError("Image size must be 5 MB or less.");
+    return;
+  }
+
+  setImageUploading(true);
+
+  try {
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const response = await api.post("/upload", formData);
+
+    if (!response.data?.success || !response.data?.imageUrl) {
+      throw new Error("Image upload failed.");
+    }
+
+    updateProfileField("profileImage", response.data.imageUrl);
+
+    notify("Image uploaded. Save your profile to apply changes.");
+  } catch (err: unknown) {
+    setImageUploadError(getErrorMessage(err));
+  } finally {
+    setImageUploading(false);
+  }
+}
+
 
   async function saveProfile() {
     setProfileSaving(true);
