@@ -29,57 +29,67 @@ export const protect = (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): void => {
   try {
     const authHeader = req.headers.authorization;
 
     if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: "Please login to continue",
       });
+      return;
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader.slice(7).trim();
 
     if (!token) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: "Authentication token missing",
       });
+      return;
     }
 
     const secret = process.env.JWT_SECRET;
 
     if (!secret) {
-      throw new Error("JWT_SECRET is missing");
+      next(new Error("JWT_SECRET is missing"));
+      return;
     }
 
-    const decoded = jwt.verify(token, secret) as TokenPayload;
+    const decoded = jwt.verify(token, secret);
 
     if (
+      typeof decoded === "string" ||
       typeof decoded.id !== "string" ||
-      !["customer", "provider", "admin"].includes(decoded.role)
+      !["customer", "provider", "admin"].includes(
+        String(decoded.role)
+      )
     ) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: "Invalid token",
       });
+      return;
     }
 
     req.user = {
       id: decoded.id,
-      role: decoded.role,
+      role: decoded.role as UserRole,
     };
 
     next();
   } catch (error) {
-    console.error("Authentication error:", error);
+    if (error instanceof jwt.JsonWebTokenError) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+      return;
+    }
 
-    return res.status(401).json({
-      success: false,
-      message: "Invalid or expired token",
-    });
+    next(error);
   }
 };
 
@@ -91,42 +101,50 @@ export const customerOnly = (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): void => {
   if (!req.user) {
-    return res.status(401).json({
+    res.status(401).json({
       success: false,
       message: "Please login first",
     });
+    return;
   }
 
   if (req.user.role !== "customer") {
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       message: "Customer access only",
     });
+    return;
   }
 
   next();
 };
 
+// ========================================
+// ADMIN ONLY
+// ========================================
+
 export const adminOnly = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     if (!req.user) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: "Authentication required",
       });
+      return;
     }
 
     if (req.user.role !== "admin") {
-      return res.status(403).json({
+      res.status(403).json({
         success: false,
         message: "Admin access required",
       });
+      return;
     }
 
     const admin = await User.findOne({
@@ -136,10 +154,11 @@ export const adminOnly = async (
     });
 
     if (!admin) {
-      return res.status(403).json({
+      res.status(403).json({
         success: false,
         message: "Admin account is inactive or unavailable",
       });
+      return;
     }
 
     next();
@@ -156,20 +175,22 @@ export const providerOnly = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
+): Promise<void> => {
   try {
     if (!req.user) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         message: "Please login first",
       });
+      return;
     }
 
     if (req.user.role !== "provider") {
-      return res.status(403).json({
+      res.status(403).json({
         success: false,
         message: "Provider access only",
       });
+      return;
     }
 
     const user = await User.findOne({
@@ -180,10 +201,12 @@ export const providerOnly = async (
     });
 
     if (!user) {
-      return res.status(403).json({
+      res.status(403).json({
         success: false,
-        message: "Your provider account is unavailable or awaiting approval",
+        message:
+          "Your provider account is unavailable or awaiting approval",
       });
+      return;
     }
 
     next();
@@ -200,24 +223,33 @@ export const customerOrApprovedProvider = async (
   req: Request,
   res: Response,
   next: NextFunction
-) => {
-  if (!req.user) {
-    return res.status(401).json({
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: "Please login first",
+      });
+      return;
+    }
+
+    if (req.user.role === "customer") {
+      customerOnly(req, res, next);
+      return;
+    }
+
+    if (req.user.role === "provider") {
+      await providerOnly(req, res, next);
+      return;
+    }
+
+    res.status(403).json({
       success: false,
-      message: "Please login first",
+      message: "Access denied",
     });
+  } catch (error) {
+    next(error);
   }
-
-  if (req.user.role === "customer") {
-    return customerOnly(req, res, next);
-  }
-
-  if (req.user.role === "provider") {
-    return providerOnly(req, res, next);
-  }
-
-  return res.status(403).json({
-    success: false,
-    message: "Access denied",
-  });
 };
+
+export {};

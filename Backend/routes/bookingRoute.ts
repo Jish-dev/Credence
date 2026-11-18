@@ -17,12 +17,14 @@ import {
   markProviderArrived,
   stopProviderTracking,
   getMyBookingTracking,
+  getAdminBookings,
 } from "../controllers/bookingControl.js";
 
 import {
   protect,
   customerOnly,
   providerOnly,
+  adminOnly,
 } from "../middleware/authMiddle.js";
 
 const router = Router();
@@ -33,6 +35,18 @@ const router = Router();
 
 // All booking routes require authentication
 router.use(protect);
+
+// ========================================
+// ADMIN BOOKING ROUTES
+// ========================================
+
+// GET /api/v1/bookings/admin/all?page=1&limit=20
+// Only authenticated administrators can access all bookings.
+router.get(
+  "/admin/all",
+  adminOnly,
+  getAdminBookings
+);
 
 // ========================================
 // CUSTOMER BOOKING ROUTES
