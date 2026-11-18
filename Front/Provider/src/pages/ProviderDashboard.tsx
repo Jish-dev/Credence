@@ -1074,48 +1074,55 @@ export default function ProviderDashboard() {
   }
 
   // Cloudinary unsigned upload. Needs VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET.
-  
-async function handleProfileImageUpload(
-  event: ChangeEvent<HTMLInputElement>
-) {
-  const file = event.target.files?.[0];
-  event.target.value = "";
 
-  if (!file) return;
+  async function handleProfileImageUpload(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
 
-  setImageUploadError("");
+    if (!file) return;
 
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-    setImageUploadError("Please choose a JPG, PNG, or WEBP image.");
-    return;
-  }
+    setImageUploadError("");
 
-  if (file.size > 5 * 1024 * 1024) {
-    setImageUploadError("Image size must be 5 MB or less.");
-    return;
-  }
-
-  setImageUploading(true);
-
-  try {
-    const formData = new FormData();
-    formData.append("image", file);
-
-    const response = await api.post("/upload", formData);
-
-    if (!response.data?.success || !response.data?.imageUrl) {
-      throw new Error("Image upload failed.");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setImageUploadError("Please choose a JPG, PNG, or WEBP image.");
+      return;
     }
 
-    updateProfileField("profileImage", response.data.imageUrl);
+    if (file.size > 5 * 1024 * 1024) {
+      setImageUploadError("Image size must be 5 MB or less.");
+      return;
+    }
 
-    notify("Image uploaded. Save your profile to apply changes.");
-  } catch (err: unknown) {
-    setImageUploadError(getErrorMessage(err));
-  } finally {
-    setImageUploading(false);
+    setImageUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file, file.name);
+
+      const response = await api.post("/upload", formData, {
+        headers: {
+          "Content-Type": undefined,
+        },
+      });
+
+      const imageUrl = response.data.imageUrl;
+      updateProfileField("profileImage", imageUrl);
+
+      if (!response.data?.success || !response.data?.imageUrl) {
+        throw new Error("Image upload failed.");
+      }
+
+      updateProfileField("profileImage", response.data.imageUrl);
+
+      notify("Image uploaded. Save your profile to apply changes.");
+    } catch (err: unknown) {
+      setImageUploadError(getErrorMessage(err));
+    } finally {
+      setImageUploading(false);
+    }
   }
-}
 
 
   async function saveProfile() {
