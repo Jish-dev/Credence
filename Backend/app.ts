@@ -174,7 +174,10 @@ app.use("/api/v1/admin/dashboard", dashboardRoutes);
 // ========================================
 
 app.use("/api/v1/payments", paymentRoutes);
+
 app.use("/api/v1/admin/upload", uploadRoutes);
+
+app.use("/api/v1/upload", uploadRoutes);
 
 app.use("/api/v1/notifications", notificationRoutes);
 app.use("/api/v1/provider-auth", providerAuthRoutes);
